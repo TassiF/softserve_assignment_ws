@@ -1,5 +1,5 @@
 # Everything past this stage is to install
-# ROS2 Humble
+# ROS2 jazzy
 
 # What is the docker name suffix for the base image to load? (defaults to empty string)
 ARG DOCKER_NAME_SUFFIX=""
@@ -9,21 +9,21 @@ FROM isaac-lab-base${DOCKER_NAME_SUFFIX} AS ros2
 # Which ROS2 apt package to install
 ARG ROS2_APT_PACKAGE
 
-# ROS2 Humble Apt installations
+# ROS2 jazzy Apt installations
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    # Install ROS2 Humble \
+    # Install ROS2 jazzy \
     software-properties-common && \
     add-apt-repository universe && \
     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo jammy) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo noble) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null && \
     apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-${ROS2_APT_PACKAGE} \
-    ros-humble-vision-msgs \
+    ros-jazzy-${ROS2_APT_PACKAGE} \
+    ros-jazzy-vision-msgs \
     # Install both FastRTPS and CycloneDDS
-    ros-humble-rmw-cyclonedds-cpp \
-    ros-humble-rmw-fastrtps-cpp \
+    ros-jazzy-rmw-cyclonedds-cpp \
+    ros-jazzy-rmw-fastrtps-cpp \
     # This includes various dev tools including colcon
     ros-dev-tools && \
     # Install rosdeps for extensions that declare a ros_ws in
@@ -32,8 +32,16 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt -y autoremove && apt clean autoclean && \
     rm -rf /var/lib/apt/lists/* && \
     # Add sourcing of setup.bash to .bashrc
-    echo "source /opt/ros/humble/setup.bash" >> ${HOME}/.bashrc
+    echo "source /opt/ros/jazzy/setup.bash" >> ${HOME}/.bashrc
 
 # Copy the RMW specifications for ROS2
 # https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_ros.html
 COPY docker/.ros/ ${DOCKER_USER_HOME}/.ros/
+
+RUN cd ${ROS_DISTRO}_ws && apt-get update && \
+    apt install -y python3-rosdep build-essential && \
+    rosdep init && rosdep update && \
+    rosdep install --from-paths src --ignore-src --rosdistro=$ROS_DISTRO -y && \
+    source /opt/ros/$ROS_DISTRO/setup.sh && \
+    colcon build && \
+    source install/local_setup.bash
