@@ -8,22 +8,23 @@ FROM isaac-lab-base${DOCKER_NAME_SUFFIX} AS ros2
 
 # Which ROS2 apt package to install
 ARG ROS2_APT_PACKAGE
+ARG ROS_DISTRO=jazzy
 
 # ROS2 jazzy Apt installations
-RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends \
+# RUN --mount=type=cache,target=/var/cache/apt 
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    # Install ROS2 jazzy \
+    # Install ROS2 \
     software-properties-common && \
     add-apt-repository universe && \
     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo noble) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null && \
     apt-get update && apt-get install -y --no-install-recommends \
-    ros-jazzy-${ROS2_APT_PACKAGE} \
-    ros-jazzy-vision-msgs \
+    ros-${ROS_DISTRO}-${ROS2_APT_PACKAGE} \
+    ros-${ROS_DISTRO}-vision-msgs \
     # Install both FastRTPS and CycloneDDS
-    ros-jazzy-rmw-cyclonedds-cpp \
-    ros-jazzy-rmw-fastrtps-cpp \
+    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+    ros-${ROS_DISTRO}-rmw-fastrtps-cpp \
     # This includes various dev tools including colcon
     ros-dev-tools && \
     # Install rosdeps for extensions that declare a ros_ws in
@@ -32,16 +33,53 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt -y autoremove && apt clean autoclean && \
     rm -rf /var/lib/apt/lists/* && \
     # Add sourcing of setup.bash to .bashrc
-    echo "source /opt/ros/jazzy/setup.bash" >> ${HOME}/.bashrc
+    echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ${HOME}/.bashrc
 
 # Copy the RMW specifications for ROS2
 # https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_ros.html
 COPY docker/.ros/ ${DOCKER_USER_HOME}/.ros/
 
-RUN cd ${ROS_DISTRO}_ws && apt-get update && \
-    apt install -y python3-rosdep build-essential && \
-    rosdep init && rosdep update && \
-    rosdep install --from-paths src --ignore-src --rosdistro=$ROS_DISTRO -y && \
-    source /opt/ros/$ROS_DISTRO/setup.sh && \
-    colcon build && \
-    source install/local_setup.bash
+# RUN cd ${ROS_DISTRO}_ws && apt-get update && \
+#     apt install -y python3-rosdep build-essential && \
+#     rosdep init && rosdep update && \
+#     rosdep install --from-paths src --ignore-src --rosdistro=${ROS_DISTRO} -y && \
+#     source /opt/ros/${ROS_DISTRO}/setup.sh && \
+#     colcon build && \
+#     source install/local_setup.bash
+# # Install the official UR description stack for ${ROS_DISTRO}
+# RUN apt-get update && apt-get install -y \
+#     ros-${ROS_DISTRO}-ur-description \
+#     ros-${ROS_DISTRO}-ur-moveit-config
+WORKDIR ${ISAACLAB_PATH}/${ROS_DISTRO}_ws
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-rosdep \
+        build-essential \
+        ros-${ROS_DISTRO}-ur-description \
+        ros-${ROS_DISTRO}-ur-moveit-config \
+        ros-${ROS_DISTRO}-rclcpp \
+        ros-${ROS_DISTRO}-robot-state-publisher \
+        ros-${ROS_DISTRO}-sensor-msgs \
+        sshpass \
+        libgl1-mesa-dri \
+        libglx-mesa0 \
+        mesa-utils \
+        && rm -rf /var/lib/apt/lists/* && \
+    if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi && \
+    rosdep update --rosdistro=${ROS_DISTRO} && \
+    export PIP_BREAK_SYSTEM_PACKAGES=1 && \
+    # rosdep install --from-paths . --simulate -v && \
+    # rosdep install -i --from-path src --rosdistro=${ROS_DISTRO} -y && \
+    rosdep install --from-paths src/manipulator_sim \
+    --ignore-src --rosdistro=${ROS_DISTRO} -y && \
+    echo "source /opt/ros/${ROS_DISTRO}/setup.sh \n\ 
+          colcon build \n\ 
+          source install/local_setup.bash" >> ${HOME}/.bashrc && \
+    echo "export XDG_RUNTIME_DIR=${ISAACLAB_PATH}/${ROS_DISTRO}_ws/log/xdg \n\
+          export RUNLEVEL=3" >> ${HOME}/.bashrc
+    
+# RUN colcon build && \
+#     source install/local_setup.bash
+
+RUN printf '%s\n' \
+    'export PS1="\[\033[1;36m\][IsaacLab]\[\033[0m\] \[\033[1;32m\]\u@\h\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ "' \
+    >> "${DOCKER_USER_HOME}/.bashrc"
