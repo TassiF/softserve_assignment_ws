@@ -73,6 +73,9 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: bind
     source: ../jazzy_ws
     target: ${DOCKER_ISAACLAB_PATH}/jazzy_ws
+  - type: volume
+    source: /tmp/.X11-unix
+    target: /tmp/.X11-unix
 
 x-default-isaac-lab-environment: &default-isaac-lab-environment
   - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
