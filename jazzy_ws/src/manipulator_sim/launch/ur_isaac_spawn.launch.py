@@ -1,203 +1,300 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
-from launch_ros.substitutions import FindPackageShare
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-from launch.event_handlers import OnProcessStart
+from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
+from moveit_configs_utils import MoveItConfigsBuilder
 
-from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import FrontendLaunchDescriptionSource
-
-
-launch_arguments = [
-    DeclareLaunchArgument('ur_type', default_value='ur30', description='UR robot model type'),
-    DeclareLaunchArgument('use_sim_time', default_value='true', description='Use simulation time'),
-    DeclareLaunchArgument('use_mock_hardware', default_value='true', description='Let Isaac Sim handle the hardware interface'),
-    DeclareLaunchArgument('mock_sensor_commands', default_value='false', description='Forward sensor commands from ROS to Isaac Sim'),
-    DeclareLaunchArgument('use_rviz', default_value='true', description='Launch RViz for debugging'),
-
-    DeclareLaunchArgument('version', default_value='6.0.1', description='Specify the version of Isaac Sim to use. Isaac Sim will be run from default install root folder for the specified version. Leave empty to use latest version of Isaac Sim.'),
-    
-    DeclareLaunchArgument('install_path', default_value='', description='If Isaac Sim is insalled in a non-default location, provide a specific path to Isaac Sim installation root folder. (If defined, "version" parameter will be ignored)'),
-    
-    DeclareLaunchArgument('use_internal_libs', default_value='false', description='Set to true if you wish to use internal ROS libraries shipped with Isaac Sim.'),
-    
-    DeclareLaunchArgument('dds_type', default_value='', description='Set to "fastdds", "cyclonedds", or "zenoh" to override RMW_IMPLEMENTATION. If left empty, the surrounding environment\'s RMW_IMPLEMENTATION is used.'),
-
-    # UR30 Robot
-    DeclareLaunchArgument('gui', default_value='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/UniversalRobots/ur30/ur30.usd', description='Provide the path to a usd file to open it when starting Isaac Sim in standard gui mode. If left empty, Isaac Sim will open an empty stage in standard gui mode.'),
-    # Franka Panda Robot
-    # DeclareLaunchArgument('gui', default_value='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/FrankaRobotics/FrankaFR3/fr3.usd', description='Provide the path to a usd file to open it when starting Isaac Sim in standard gui mode. If left empty, Isaac Sim will open an empty stage in standard gui mode.'),
-    
-    DeclareLaunchArgument('standalone', default_value='', description='Provide the path to the python file to open it and start Isaac Sim in standalone workflow. If left empty, Isaac Sim will open an empty stage in standard Gui mode.'),
-    
-    DeclareLaunchArgument('play_sim_on_start', default_value='false', description='If enabled and Isaac Sim will start playing the scene after it is loaded. (Only applicable when in standard gui mode and loading a scene)'),
-    
-    DeclareLaunchArgument('ros_distro', default_value='jazzy', description='Provide ROS version to use. Only Humble and Jazzy is supported.'),
-    
-    DeclareLaunchArgument('ros_installation_path', default_value='', description='Comma-separated list of ROS installation paths. If ROS is installed in a non-default location (as in not under /opt/ros/), provide the path to your main setup.bash file for your ROS install. (/path/to/custom/ros/install/setup.bash). Similarly add the path to your local_setup.bash file for your workspace installation. (/path/to/custom_ros_workspace/install/local_setup.bash)'),
-
-    DeclareLaunchArgument('headless', default_value='', description='Set to "native" or "webrtc" to run Isaac Sim with different headless modes, if left blank, Isaac Sim will run in the regular GUI workflow. This parameter can be overridden by "standalone" parameter.'),
-
-    DeclareLaunchArgument('custom_args', default_value='', description='Add any custom Isaac Sim args that you want to forward to isaac-sim.sh during run time.'),
-
-    DeclareLaunchArgument('exclude_install_path', default_value='', description='Comma-separated list of installation paths to exclude from LD_LIBRARY_PATH, PYTHONPATH, and PATH environment variables.'),
-
-]
-
-def robot_description_content():
-    ur_type = LaunchConfiguration('ur_type')
-    use_mock_hardware = LaunchConfiguration('use_mock_hardware')
-    mock_sensor_commands = LaunchConfiguration('mock_sensor_commands')
-
-    ur_desc_share = FindPackageShare(package='ur_description')
-    urdf_xacro = PathJoinSubstitution([ur_desc_share, 'urdf', 'ur.urdf.xacro'])
-
-    return Command([
-        'xacro', ' ', urdf_xacro, ' ',
-        'name:=', 'ur', ' ',
-        'ur_type:=', ur_type, ' ',
-        'use_mock_hardware:=', use_mock_hardware, ' ',
-        'mock_sensor_commands:=', mock_sensor_commands, ' ',
-        'force_abs_paths:=true'
-    ])
-
-def launch_setup(context):
-    # Run isaac sim as a ROS2 node with default parameters. Parameters can be overridden here or via launch arguments from other launch files. 
-    isaacsim_node = Node(
-        package='isaacsim_bringup', executable='run_isaacsim',
-        name='isaacsim_bringup', output="screen",
-        parameters=[{
-            'version': LaunchConfiguration('version'),
-            'install_path': LaunchConfiguration('install_path'),
-            'use_internal_libs': LaunchConfiguration('use_internal_libs'),
-            'dds_type': LaunchConfiguration('dds_type'),
-            'gui': LaunchConfiguration('gui'),
-            'standalone': LaunchConfiguration('standalone'),
-            'play_sim_on_start': LaunchConfiguration('play_sim_on_start'),
-            'ros_distro': LaunchConfiguration('ros_distro'),
-            'ros_installation_path': LaunchConfiguration('ros_installation_path'),
-            'headless': LaunchConfiguration('headless'),
-            'custom_args': LaunchConfiguration('custom_args'),
-            'exclude_install_path': LaunchConfiguration('exclude_install_path')
-        }]
-    )
-    return [isaacsim_node]
 
 def generate_launch_description():
-    # ur_type = LaunchConfiguration('ur_type')
-    # use_mock_hardware = LaunchConfiguration('use_mock_hardware')
-    # mock_sensor_commands = LaunchConfiguration('mock_sensor_commands')
-    # urdf_xacro = PathJoinSubstitution([ur_desc_share, 'urdf', 'ur.urdf.xacro'])
+    ur_type = LaunchConfiguration("ur_type")
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    use_rviz = LaunchConfiguration("use_rviz")
+    start_isaac_sim = LaunchConfiguration("start_isaac_sim")
+    start_planner = LaunchConfiguration("start_planner")
+    random_seed = LaunchConfiguration("random_seed")
+    max_cycles = LaunchConfiguration("max_cycles")
 
+    manipulator_share = get_package_share_directory("manipulator_sim")
+    ur_description_share = get_package_share_directory("ur_description")
+    urdf_xacro = os.path.join(
+        ur_description_share, "urdf", "ur.urdf.xacro"
+    )
+    moveit_controllers = os.path.join(
+        manipulator_share, "config", "moveit_controllers.yaml"
+    )
+    pick_place_config = os.path.join(
+        manipulator_share, "config", "pick_place.yaml"
+    )
 
-    use_rviz = LaunchConfiguration('use_rviz')
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    ur_desc_share = FindPackageShare(package='ur_description')
-    rviz_cfg = PathJoinSubstitution([ur_desc_share, 'rviz', 'view_robot.rviz'])
-
-    
-    # # IsaacSim node 
-    # isaacsim_node = Node(
-    #     package='isaacsim_bringup', executable='run_isaacsim',
-    #     name='isaacsim_bringup', output="screen",
-    #     parameters=[{
-    #         'version': LaunchConfiguration('version'),
-    #         'install_path': LaunchConfiguration('install_path'),
-    #         'use_internal_libs': LaunchConfiguration('use_internal_libs'),
-    #         'dds_type': LaunchConfiguration('dds_type'),
-    #         'gui': LaunchConfiguration('gui'),
-    #         'standalone': LaunchConfiguration('standalone'),
-    #         'play_sim_on_start': LaunchConfiguration('play_sim_on_start'),
-    #         'ros_distro': LaunchConfiguration('ros_distro'),
-    #         'ros_installation_path': LaunchConfiguration('ros_installation_path'),
-    #         'headless': LaunchConfiguration('headless'),
-    #         'custom_args': LaunchConfiguration('custom_args'),
-    #         'exclude_install_path': LaunchConfiguration('exclude_install_path')
-    #     }]
-    # )
-    # opfunc = OpaqueFunction(function = isaacsim_node)
-    
-    #Robot state publisher node
-    nodes = [
-        Node(
-            package='robot_state_publisher',
-            executable='robot_state_publisher',
-            name='robot_state_publisher',
-            output='screen',
-            parameters=[{
-                'robot_description': robot_description_content(),
-                'use_sim_time': use_sim_time
-            }]
+    # Use same robot model for robot_state_publisher, MoveIt, RViz and planner. Isaac reads UR_ROBOT_TYPE.
+    moveit_config = (
+        MoveItConfigsBuilder(
+            robot_name="ur", package_name="ur_moveit_config"
         )
+        .robot_description(
+            file_path=urdf_xacro,
+            mappings={
+                "name": "ur",
+                "ur_type": ur_type,
+                "force_abs_paths": "true",
+            },
+        )
+        .robot_description_semantic(
+            file_path="srdf/ur.srdf.xacro",
+            mappings={"name": "ur"},
+        )
+        .robot_description_kinematics(
+            file_path="config/kinematics.yaml"
+        )
+        .joint_limits(file_path="config/joint_limits.yaml")
+        .trajectory_execution(file_path=moveit_controllers)
+        .planning_pipelines(pipelines=["ompl"])
+        .to_moveit_configs()
+    )
+
+    launch_arguments = [
+        DeclareLaunchArgument(
+            "ur_type",
+            default_value="ur30",
+            description=(
+                "UR model used by both ROS model and Isaac USD asset (the Isaac asset must exist under UniversalRobots/<type>)."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "use_sim_time",
+            default_value="true",
+            description="Use the /clock published by Isaac Sim.",
+        ),
+        DeclareLaunchArgument(
+            "use_rviz",
+            default_value="true",
+            description="Launch RViz with the UR MoveIt configuration.",
+        ),
+        DeclareLaunchArgument(
+            "start_isaac_sim",
+            default_value="true",
+            description="Start the Isaac Sim standalone scene.",
+        ),
+        DeclareLaunchArgument(
+            "start_planner",
+            default_value="true",
+            description="Start automatic random pick/place planning.",
+        ),
+        DeclareLaunchArgument(
+            "random_seed",
+            default_value="-1",
+            description=(
+                "Planner RNG seed; use -1 for nondeterministic targets."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "max_cycles",
+            default_value="0",
+            description="Number of pick/place cycles; 0 runs indefinitely.",
+        ),
+        DeclareLaunchArgument(
+            "initial_joint_positions",
+            default_value="0.0,-1.5708,1.5708,-1.5708,-1.5708,0.0",
+            description=(
+                "Initial positions in shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3 order."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "version",
+            default_value="5.1.0",
+            description="Isaac Sim version used when install_path is empty.",
+        ),
+        DeclareLaunchArgument(
+            "install_path",
+            default_value="/isaac-sim",
+            description="Isaac Sim installation root inside the container.",
+        ),
+        DeclareLaunchArgument(
+            "use_internal_libs",
+            default_value="true",
+            description=(
+                "Use Isaac Sim's Python 3.11-compatible ROS libraries (required by the 5.1 container)."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "dds_type",
+            default_value="",
+            description="Optional middleware override: fastdds, cyclonedds, or zenoh.",
+        ),
+        DeclareLaunchArgument(
+            "gui",
+            default_value="",
+            description="Optional USD path for non-standalone Isaac startup.",
+        ),
+        DeclareLaunchArgument(
+            "standalone",
+            default_value=PathJoinSubstitution(
+                [
+                    FindPackageShare("manipulator_sim"),
+                    "scripts",
+                    "spawn_ur30.py",
+                ]
+            ),
+            description="Isaac Python scene that spawns and bridges the UR robot.",
+        ),
+        DeclareLaunchArgument(
+            "play_sim_on_start",
+            default_value="true",
+            description="Start the simulation timeline immediately.",
+        ),
+        DeclareLaunchArgument(
+            "ros_distro",
+            default_value="jazzy",
+            description="ROS distribution exposed to Isaac Sim.",
+        ),
+        DeclareLaunchArgument(
+            "ros_installation_path",
+            default_value="",
+            description="Optional custom ROS setup paths for Isaac Sim.",
+        ),
+        DeclareLaunchArgument(
+            "headless",
+            default_value="",
+            description="Set to native or webrtc for headless Isaac Sim.",
+        ),
+        DeclareLaunchArgument(
+            "custom_args",
+            default_value="",
+            description="Additional Isaac Sim command-line arguments.",
+        ),
+        DeclareLaunchArgument(
+            "exclude_install_path",
+            default_value="",
+            description="Paths to remove from the Isaac Sim process environment.",
+        ),
     ]
 
-    #Rviz2 node
-    nodes.append(
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            output='screen',
-            arguments=['-d', rviz_cfg],
-            condition=IfCondition(use_rviz),
-            parameters=[{'use_sim_time': use_sim_time}]
-        )
+    environment = [
+        SetEnvironmentVariable(name="UR_ROBOT_TYPE", value=ur_type),
+        SetEnvironmentVariable(
+            name="UR_INITIAL_JOINTS",
+            value=LaunchConfiguration("initial_joint_positions"),
+        ),
+        SetEnvironmentVariable(
+            name="UR_HEADLESS", value=LaunchConfiguration("headless")
+        ),
+    ]
+
+    isaac_sim = Node(
+        package="isaacsim_bringup",
+        executable="run_isaacsim",
+        name="isaacsim_bringup",
+        output="screen",
+        condition=IfCondition(start_isaac_sim),
+        parameters=[
+            {
+                "version": LaunchConfiguration("version"),
+                "install_path": LaunchConfiguration("install_path"),
+                "use_internal_libs": LaunchConfiguration("use_internal_libs"),
+                "dds_type": LaunchConfiguration("dds_type"),
+                "gui": LaunchConfiguration("gui"),
+                "standalone": LaunchConfiguration("standalone"),
+                "play_sim_on_start": LaunchConfiguration("play_sim_on_start"),
+                "ros_distro": LaunchConfiguration("ros_distro"),
+                "ros_installation_path": LaunchConfiguration(
+                    "ros_installation_path"
+                ),
+                "headless": LaunchConfiguration("headless"),
+                "custom_args": LaunchConfiguration("custom_args"),
+                "exclude_install_path": LaunchConfiguration(
+                    "exclude_install_path"
+                ),
+            }
+        ],
     )
 
-    #Joint state publisher node
-    nodes.append(
-        Node(
-            package='joint_state_publisher',
-            executable='joint_state_publisher',
-            name='initial_joint_states_publisher',
-            output='screen',
-            parameters=[{
-                'use_sim_time': use_sim_time,
-                'zeros': {
-                    'shoulder_pan_joint': 0.0,
-                    'shoulder_lift_joint': -1.5708,  # -90 degrees
-                    'elbow_joint': 1.5708,           #  90 degrees
-                    'wrist_1_joint': -1.5708,        # -90 degrees
-                    'wrist_2_joint': -1.5708,        # -90 degrees
-                    'wrist_3_joint': 0.0
-                }
-            }]
-        )
+    robot_state_publisher = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="screen",
+        parameters=[
+            moveit_config.robot_description,
+            {"use_sim_time": use_sim_time},
+        ],
     )
 
+    trajectory_controller = Node(
+        package="manipulator_sim",
+        executable="isaac_joint_trajectory_controller",
+        name="isaac_joint_trajectory_controller",
+        output="screen",
+        parameters=[pick_place_config, {"use_sim_time": use_sim_time}],
+    )
 
-    # opfunc = OpaqueFunction(function=launch_setup)
-    # ld = LaunchDescription(launch_arguments)
-    
-    # for node in nodes:
-    #     ld.add_action(node)
-        
-    # ld.add_action(opfunc)
+    move_group = Node(
+        package="moveit_ros_move_group",
+        executable="move_group",
+        name="move_group",
+        output="screen",
+        parameters=[
+            moveit_config.to_dict(),
+            {
+                "use_sim_time": use_sim_time,
+                "allow_trajectory_execution": True,
+                "publish_robot_description": True,
+                "publish_robot_description_semantic": True,
+            },
+        ],
+    )
 
-    #UniversalRobots node
-    ur_view = [
-                IncludeLaunchDescription(
-                    FrontendLaunchDescriptionSource(
-                        [
-                            PathJoinSubstitution(
-                                [
-                                    FindPackageShare("ur_description"),
-                                    "launch",
-                                    "view_ur.launch.xml",
-                                ]
-                            )
-                        ]
-                    ),
-                    launch_arguments={
-                        "ur_type": LaunchConfiguration("ur_type"),
-                    }.items(),
-                )
-            ]
+    planner = Node(
+        package="manipulator_sim",
+        executable="random_pick_place_planner",
+        name="random_pick_place_planner",
+        output="screen",
+        condition=IfCondition(start_planner),
+        parameters=[
+            moveit_config.to_dict(),
+            pick_place_config,
+            {
+                "use_sim_time": use_sim_time,
+                "random_seed": ParameterValue(random_seed, value_type=int),
+                "max_cycles": ParameterValue(max_cycles, value_type=int),
+            },
+        ],
+    )
 
-    opfunc = OpaqueFunction(function = launch_setup)
-    # ld = LaunchDescription(launch_arguments + nodes)
-    ld = LaunchDescription(launch_arguments + ur_view)
-    ld.add_action(opfunc)
-    return ld
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2_moveit",
+        output="screen",
+        condition=IfCondition(use_rviz),
+        arguments=[
+            "-d",
+            os.path.join(
+                get_package_share_directory("ur_moveit_config"),
+                "config",
+                "moveit.rviz",
+            ),
+        ],
+        parameters=[
+            moveit_config.to_dict(),
+            {"use_sim_time": use_sim_time},
+        ],
+    )
+
+    return LaunchDescription(
+        launch_arguments
+        + environment
+        + [
+            robot_state_publisher,
+            trajectory_controller,
+            move_group,
+            planner,
+            rviz,
+            isaac_sim,
+        ]
+    )
