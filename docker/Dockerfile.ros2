@@ -4,7 +4,7 @@
 # What is the docker name suffix for the base image to load? (defaults to empty string)
 ARG DOCKER_NAME_SUFFIX=""
 
-FROM isaac-lab-base${DOCKER_NAME_SUFFIX} AS ros2
+FROM base AS ros2
 
 # Which ROS2 apt package to install
 ARG ROS2_APT_PACKAGE
@@ -69,8 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     export PIP_BREAK_SYSTEM_PACKAGES=1 && \
     # rosdep install --from-paths . --simulate -v && \
     # rosdep install -i --from-path src --rosdistro=${ROS_DISTRO} -y && \
-    rosdep install --from-paths src/manipulator_sim \
-    --ignore-src --rosdistro=${ROS_DISTRO} -y && \
+    # rosdep install --from-paths src/manipulator_sim --ignore-src --rosdistro=${ROS_DISTRO} -y && \
     echo "export XDG_RUNTIME_DIR=${ISAACLAB_PATH}/${ROS_DISTRO}_ws/log/xdg \n\
           export RUNLEVEL=3" >> ${HOME}/.bashrc
     

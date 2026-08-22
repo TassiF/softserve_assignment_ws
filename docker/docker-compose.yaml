@@ -121,12 +121,16 @@ services:
   # installation on top of the base image
   isaac-lab-ros2:
     profiles: [ "ros2" ]
+    depends_on:
+      - isaac-lab-base
     env_file:
       - .env.base
       - .env.ros2
     build:
       context: ../
       dockerfile: docker/Dockerfile.ros2
+      additional_contexts:
+        base: service:isaac-lab-base
       args:
         # ROS2_APT_PACKAGE will default to NONE. This is to
         # avoid a warning message when building only the base profile

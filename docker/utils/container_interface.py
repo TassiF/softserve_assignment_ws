@@ -309,6 +309,8 @@ class ContainerInterface:
         """
         self.add_yamls = ["--file", "docker-compose.yaml"]
         self.add_profiles = ["--profile", f"{self.profile}"]
+        if self.profile != "base":
+            self.add_profiles += ["--profile", "base"]
         self.add_env_files = ["--env-file", ".env.base"]
 
         # extend env file based on profile
