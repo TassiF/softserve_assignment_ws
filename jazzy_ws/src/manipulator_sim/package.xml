@@ -11,11 +11,14 @@
   <depend>builtin_interfaces</depend>
   <depend>control_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>moveit_core</depend>
+  <depend>moveit_msgs</depend>
   <depend>moveit_ros_planning_interface</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>robot_state_publisher</depend>
   <depend>sensor_msgs</depend>
+  <depend>shape_msgs</depend>
   <depend>std_msgs</depend>
   <depend>trajectory_msgs</depend>
   
@@ -26,6 +29,7 @@
   <exec_depend>moveit_configs_utils</exec_depend>
   <exec_depend>moveit_ros_move_group</exec_depend>
   <exec_depend>moveit_simple_controller_manager</exec_depend>
+  <exec_depend>rclpy</exec_depend>
   <exec_depend>ur_description</exec_depend>
   <exec_depend>ur_moveit_config</exec_depend>
   <exec_depend>xacro</exec_depend>

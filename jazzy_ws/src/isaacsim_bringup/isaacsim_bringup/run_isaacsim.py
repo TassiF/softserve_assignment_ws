@@ -209,6 +209,18 @@ class IsaacSimLauncherNode(Node):
                     )
                     sys.exit(1)
 
+                internal_python_path = os.path.join(
+                    os.path.dirname(internal_library_path), "rclpy"
+                )
+                if not os.path.isdir(internal_python_path):
+                    print(
+                        "ERROR: Isaac Sim's internal ROS Python modules were "
+                        f"not found for ROS {args.ros_distro}: "
+                        f"{internal_python_path}",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+
                 current_library_path = os.environ.get("LD_LIBRARY_PATH", "")
                 os.environ["LD_LIBRARY_PATH"] = os.pathsep.join(
                     path
@@ -220,6 +232,13 @@ class IsaacSimLauncherNode(Node):
                 update_env_vars(version_to_remove, specific_path_to_remove, "LD_LIBRARY_PATH")
                 update_env_vars(version_to_remove, specific_path_to_remove, "PYTHONPATH")
                 update_env_vars(version_to_remove, specific_path_to_remove, "PATH")
+
+                current_python_path = os.environ.get("PYTHONPATH", "")
+                os.environ["PYTHONPATH"] = os.pathsep.join(
+                    path
+                    for path in [internal_python_path, current_python_path]
+                    if path
+                )
 
         # Apply path exclusions AFTER all other modifications
         if args.exclude_install_path:

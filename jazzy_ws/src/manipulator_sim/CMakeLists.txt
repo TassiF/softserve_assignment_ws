@@ -14,11 +14,14 @@ find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(moveit_msgs REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(robot_state_publisher REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(shape_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(ur_description REQUIRED)
@@ -45,9 +48,12 @@ add_executable(
 ament_target_dependencies(
   random_pick_place_planner
   geometry_msgs
+  moveit_core
+  moveit_msgs
   moveit_ros_planning_interface
   rclcpp
   sensor_msgs
+  shape_msgs
   std_msgs
 )
 

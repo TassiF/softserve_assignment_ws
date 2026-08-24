@@ -20,22 +20,26 @@ isaac_joint_trajectory_controller:
 random_pick_place_planner:
   ros__parameters:
     planning_group: ur_manipulator
-    end_effector_link: tool0
-    planner_id: RRTConnectkConfigDefault
-    planning_time: 5.0
-    planning_attempts: 5
-    random_samples: 10
-    velocity_scaling: 0.25
-    acceleration_scaling: 0.25
+    # The integrated 2F-140 is mounted on wrist_3_link in the Isaac asset.
+    end_effector_link: wrist_3_link
+    gripper_mount_link: wrist_3_link
+    # Empty selects OMPL's configured/default planner (RRTConnect here).
+    planner_id: ''
+    planning_time: 8.0
+    planning_attempts: 8
+    planning_retries: 4
+    velocity_scaling: 0.20
+    acceleration_scaling: 0.20
     position_tolerance: 0.01
     orientation_tolerance: 0.05
-    approach_height: 0.15
+    approach_height: 0.18
+    cartesian_step: 0.005
     dwell_time: 1.0
     retry_delay: 2.0
-    # 0 means that new random pick/place cycles are generated indefinitely.
-    max_cycles: 0
-    # Set to a non-negative value for repeatable random targets.
-    random_seed: -1
+    scene_timeout: 8.0
+    placement_timeout: 4.0
+    # max_cycles and random_seed are supplied by launch arguments so their
+    # command-line values cannot be masked by this parameter file.
     joint_state_topic: /joint_states
     joint_state_timeout: 1.0
     minimum_state_samples: 3
@@ -47,9 +51,60 @@ random_pick_place_planner:
       - wrist_2_joint
       - wrist_3_joint
 
-    # Cartesian sampling boxes in the robot's planning frame (base_link).
-    # Pick and place use opposite sides of the workspace by default.
-    pick_min: [0.35, -0.70, 0.20]
-    pick_max: [0.95, -0.15, 0.65]
-    place_min: [0.35, 0.15, 0.20]
-    place_max: [0.95, 0.70, 0.65]
+    # The fixed grasp orientation is [x, y, z, w]. It points the 2F-140 down.
+    grasp_orientation_xyzw: [0.70710678, 0.70710678, 0.0, 0.0]
+    # Offset from the object center to wrist_3_link, expressed after applying
+    # grasp_orientation_xyzw. The object therefore sits at +0.26 m on wrist z.
+    object_to_wrist_offset: [0.0, 0.0, -0.26]
+
+    # Isaac owns the object's randomized pose and publishes the measured pose.
+    object_id: pick_object
+    object_size: [0.055, 0.055, 0.055]
+    object_mass: 0.08
+    object_spawn_min: [0.38, -0.58, 0.035]
+    object_spawn_max: [0.76, -0.25, 0.035]
+    object_pose_topic: /pick_place/object_pose
+    object_generation_topic: /pick_place/object_generation
+    reset_object_topic: /pick_place/reset_object
+
+    # Three open-top bins. Centers contain x, y, and the base z coordinate.
+    bin_centers: [
+      0.36, 0.48, 0.0,
+      0.64, 0.48, 0.0,
+      0.92, 0.48, 0.0
+    ]
+    bin_outer_size: [0.22, 0.20, 0.14]
+    bin_wall_thickness: 0.015
+    bin_floor_thickness: 0.02
+    bin_drop_height: 0.22
+
+    # This obstacle is present in both Isaac and the MoveIt planning scene.
+    obstacle_position: [0.62, 0.05, 0.25]
+    obstacle_size: [0.22, 0.16, 0.50]
+    ground_size: [2.4, 2.4, 0.05]
+
+    # Conservative collision proxy attached to wrist_3_link in MoveIt.
+    gripper_body_size: [0.14, 0.14, 0.18]
+    gripper_body_position: [0.0, 0.0, 0.10]
+    gripper_finger_size: [0.025, 0.035, 0.14]
+    gripper_finger_positions: [-0.070, 0.0, 0.22, 0.070, 0.0, 0.22]
+    # The proxy may overlap the wrist chain at its mount. Environment
+    # collisions remain enabled, including collisions with the obstacle/bins.
+    gripper_touch_links:
+      - base_link
+      - base_link_inertia
+      - shoulder_link
+      - upper_arm_link
+      - forearm_link
+      - wrist_1_link
+      - wrist_2_link
+      - wrist_3_link
+      - flange
+      - tool0
+
+    # Isaac gripper control and deterministic grasp confirmation.
+    gripper_open_position: 0.0
+    gripper_closed_position: 0.65
+    max_grasp_distance: 0.10
+    gripper_command_topic: /pick_place/gripper_close
+    grasp_state_topic: /pick_place/grasp_attached

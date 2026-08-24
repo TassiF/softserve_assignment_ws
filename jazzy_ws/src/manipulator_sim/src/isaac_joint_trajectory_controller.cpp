@@ -22,6 +22,11 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
 
+#define ANSI_COLOR_ERROR    "\x1b[31m" //red
+#define ANSI_COLOR_INFO   "\x1b[32m" //green
+#define ANSI_COLOR_WARN  "\x1b[33m"  //yellow
+#define ANSI_COLOR_RESET   "\x1b[0m"  //reset
+
 namespace manipulator_sim
 {
 
@@ -99,7 +104,7 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "Isaac trajectory controller ready: %s -> %s (feedback: %s)",
+      ANSI_COLOR_INFO "Isaac trajectory controller ready: %s -> %s (feedback: %s)" ANSI_COLOR_RESET,
       action_name_.c_str(), command_topic_.c_str(), state_topic_.c_str());
   }
 
@@ -145,7 +150,7 @@ private:
     if (message->name.size() != message->position.size()) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Ignoring malformed Isaac JointState: %zu names, %zu positions",
+        ANSI_COLOR_WARN "Ignoring malformed Isaac JointState: %zu names, %zu positions" ANSI_COLOR_RESET,
         message->name.size(), message->position.size());
       return;
     }
@@ -162,7 +167,7 @@ private:
       if (positions.find(joint_name) == positions.end()) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Isaac JointState does not yet contain required joint '%s'",
+          ANSI_COLOR_WARN "Isaac JointState does not yet contain required joint '%s'" ANSI_COLOR_RESET,
           joint_name.c_str());
         return;
       }
@@ -259,11 +264,11 @@ private:
         return false;
       }
       const std::array<std::pair<const std::vector<double> *, const char *>, 4> fields{{
-          {&point.positions, "position"},
-          {&point.velocities, "velocity"},
-          {&point.accelerations, "acceleration"},
-          {&point.effort, "effort"},
-        }};
+        {&point.positions, "position"},
+        {&point.velocities, "velocity"},
+        {&point.accelerations, "acceleration"},
+        {&point.effort, "effort"},
+      }};
       for (const auto & [values, field_name] : fields) {
         if (!std::all_of(
             values->begin(), values->end(),
@@ -307,13 +312,13 @@ private:
   {
     std::string reason;
     if (!validate_goal(*goal, reason)) {
-      RCLCPP_ERROR(get_logger(), "Rejecting trajectory: %s", reason.c_str());
+      RCLCPP_ERROR(get_logger(), ANSI_COLOR_ERROR "Rejecting trajectory: %s" ANSI_COLOR_RESET, reason.c_str());
       return rclcpp_action::GoalResponse::REJECT;
     }
 
     bool expected = false;
     if (!executing_.compare_exchange_strong(expected, true)) {
-      RCLCPP_WARN(get_logger(), "Rejecting trajectory while another goal is active");
+      RCLCPP_WARN(get_logger(), ANSI_COLOR_WARN "Rejecting trajectory while another goal is active" ANSI_COLOR_RESET);
       return rclcpp_action::GoalResponse::REJECT;
     }
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
@@ -322,7 +327,7 @@ private:
   rclcpp_action::CancelResponse handle_cancel(
     const std::shared_ptr<GoalHandleFollowJointTrajectory>)
   {
-    RCLCPP_INFO(get_logger(), "Trajectory cancellation requested");
+    RCLCPP_INFO(get_logger(), ANSI_COLOR_INFO "Trajectory cancellation requested" ANSI_COLOR_RESET);
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
@@ -436,7 +441,7 @@ private:
       result->error_code = FollowJointTrajectory::Result::INVALID_GOAL;
       result->error_string = "No fresh, complete joint state is available from Isaac Sim";
       goal_handle->abort(result);
-      RCLCPP_ERROR(get_logger(), "%s", result->error_string.c_str());
+      RCLCPP_ERROR(get_logger(), ANSI_COLOR_ERROR "%s" ANSI_COLOR_RESET, result->error_string.c_str());
       return;
     }
 
@@ -451,7 +456,7 @@ private:
       goal->trajectory.points.back().time_from_start);
 
     RCLCPP_INFO(
-      get_logger(), "Executing %zu-point trajectory over %.3f seconds",
+      get_logger(), ANSI_COLOR_INFO "Executing %zu-point trajectory over %.3f seconds" ANSI_COLOR_RESET,
       goal->trajectory.points.size(), final_trajectory_time);
 
     // MoveIt performs execution monitoring in ROS time and Isaac publishes
@@ -488,7 +493,7 @@ private:
         result->error_code = FollowJointTrajectory::Result::PATH_TOLERANCE_VIOLATED;
         result->error_string = "Joint-state feedback from Isaac Sim became stale";
         goal_handle->abort(result);
-        RCLCPP_ERROR(get_logger(), "%s", result->error_string.c_str());
+        RCLCPP_ERROR(get_logger(), ANSI_COLOR_ERROR "%s" ANSI_COLOR_RESET, result->error_string.c_str());
         return;
       }
 
@@ -499,7 +504,8 @@ private:
         errors[index] = position_error(desired[index], actual[index]);
         path_within_tolerance = path_within_tolerance &&
           std::abs(errors[index]) <= path_tolerances[index];
-        const double final_error = position_error(goal->trajectory.points.back().positions[index], actual[index]);
+        const double final_error = position_error(goal->trajectory.points.back().positions[index],
+            actual[index]);
         goal_within_tolerance = goal_within_tolerance &&
           std::abs(final_error) <= goal_tolerances[index];
       }
@@ -520,7 +526,7 @@ private:
         result->error_code = FollowJointTrajectory::Result::PATH_TOLERANCE_VIOLATED;
         result->error_string = "Isaac Sim tracking error exceeded the path tolerance";
         goal_handle->abort(result);
-        RCLCPP_ERROR(get_logger(), "%s", result->error_string.c_str());
+        RCLCPP_ERROR(get_logger(), ANSI_COLOR_ERROR "%s" ANSI_COLOR_RESET, result->error_string.c_str());
         return;
       }
 
@@ -531,7 +537,7 @@ private:
             result->error_code = FollowJointTrajectory::Result::SUCCESSFUL;
             result->error_string = "Trajectory completed";
             goal_handle->succeed(result);
-            RCLCPP_INFO(get_logger(), "Trajectory completed successfully");
+            RCLCPP_INFO(get_logger(), ANSI_COLOR_INFO "Trajectory completed successfully" ANSI_COLOR_RESET);
             return;
           }
         } else {
@@ -543,7 +549,7 @@ private:
           result->error_code = FollowJointTrajectory::Result::GOAL_TOLERANCE_VIOLATED;
           result->error_string = "Isaac Sim did not reach the final pose before the goal timeout";
           goal_handle->abort(result);
-          RCLCPP_ERROR(get_logger(), "%s", result->error_string.c_str());
+          RCLCPP_ERROR(get_logger(), ANSI_COLOR_ERROR "%s" ANSI_COLOR_RESET, result->error_string.c_str());
           return;
         }
       }
