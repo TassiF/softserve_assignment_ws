@@ -249,7 +249,8 @@ def generate_launch_description():
         package='moveit_ros_move_group',
         executable='move_group',
         name='move_group',
-        output='screen',
+        output='log',
+        arguments=['--ros-args', '--log-level', 'fatal'],
         parameters=[
             moveit_config.to_dict(),
             {
