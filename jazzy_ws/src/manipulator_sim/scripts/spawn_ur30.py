@@ -50,7 +50,7 @@ from isaacsim.core.utils import extensions, viewports  # noqa: E402, I100
 from isaacsim.core.utils.stage import add_reference_to_stage  # noqa: E402, I100
 from isaacsim.core.utils.types import ArticulationAction  # noqa: E402, I100
 from isaacsim.storage.native import get_assets_root_path  # noqa: E402, I100
-from pxr import Usd, UsdPhysics  # noqa: E402, I100
+from pxr import Gf, Sdf, Usd, UsdPhysics  # noqa: E402, I100
 from rclpy.qos import (  # noqa: E402, I100
     DurabilityPolicy,
     QoSProfile,
@@ -482,7 +482,7 @@ class SceneRosBridge:
         rigid_body = UsdPhysics.RigidBodyAPI(
             omni.usd.get_context().get_stage().GetPrimAtPath(OBJECT_PRIM_PATH)
         )
-        self.kinematic_attribute = rigid_body.CreateKinematicEnabledAttr(False)
+        self.grasp_joint: UsdPhysics.FixedJoint | None = None
         object_rigid_view = self.pick_object._rigid_prim_view
         if not object_rigid_view.is_physics_handle_valid():
             raise RuntimeError('Pick-object PhysX view was not initialized.')
@@ -535,7 +535,9 @@ class SceneRosBridge:
     def release_object(self) -> None:
         if self.object_attached:
             self.object_attached = False
-            self.kinematic_attribute.Set(False)
+            if self.grasp_joint is not None:
+                self.grasp_joint.GetPrim().SetActive(False)
+                self.grasp_joint = None
             self.pick_object.set_linear_velocity(np.zeros(3, dtype=np.float32))
             self.pick_object.set_angular_velocity(np.zeros(3, dtype=np.float32))
 
@@ -543,7 +545,6 @@ class SceneRosBridge:
         self.requested_close = False
         self.previous_requested_close = False
         self.release_object()
-        self.kinematic_attribute.Set(False)
         position = np.array(
             [
                 self.random_generator.uniform(self.spawn_min[0], self.spawn_max[0]),
@@ -586,30 +587,34 @@ class SceneRosBridge:
         self.relative_orientation = quaternion_multiply(
             inverse_tcp, np.asarray(object_orientation)
         )
-        self.kinematic_attribute.Set(True)
+        stage = omni.usd.get_context().get_stage()
+        joint_path = Sdf.Path('/World/PickObjectGraspJoint')
+        if stage.GetPrimAtPath(joint_path).IsValid():
+            stage.RemovePrim(joint_path)
+        self.grasp_joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
+        self.grasp_joint.CreateBody0Rel().SetTargets(
+            [self.wrist_prim.GetPath()]
+        )
+        self.grasp_joint.CreateBody1Rel().SetTargets(
+            [Sdf.Path(OBJECT_PRIM_PATH)]
+        )
+        wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
+        inverse_wrist = quaternion_conjugate(wrist_orientation)
+        local_position = rotate_vector(
+            inverse_wrist, np.asarray(object_position) - wrist_position
+        )
+        local_orientation = quaternion_multiply(
+            inverse_wrist, np.asarray(object_orientation)
+        )
+        self.grasp_joint.CreateLocalPos0Attr().Set(Gf.Vec3f(*local_position))
+        self.grasp_joint.CreateLocalRot0Attr().Set(
+            Gf.Quatf(
+                float(local_orientation[0]),
+                Gf.Vec3f(*local_orientation[1:]),
+            )
+        )
         self.object_attached = True
         print('Robotiq grasp attached the object', flush=True)
-
-    def update_attached_pose(self) -> None:
-        tcp_position, tcp_orientation = self.tcp_world_pose()
-        object_position = tcp_position + rotate_vector(
-            tcp_orientation, self.relative_position
-        )
-        object_orientation = quaternion_multiply(
-            tcp_orientation, self.relative_orientation
-        )
-        # PhysX tensor transforms use [x, y, z, qx, qy, qz, qw], whereas the
-        # Isaac high-level APIs and our quaternion helpers use [w, x, y, z].
-        target = np.empty((1, 7), dtype=np.float32)
-        target[0, :3] = object_position
-        target[0, 3:6] = object_orientation[1:]
-        target[0, 6] = object_orientation[0]
-        target = self.object_backend_utils.convert(
-            target, device=self.object_physics_device, dtype='float32'
-        )
-        self.object_physics_view.set_kinematic_targets(
-            target, self.object_indices
-        )
 
     def tcp_world_pose(self) -> tuple[np.ndarray, np.ndarray]:
         wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
@@ -636,9 +641,6 @@ class SceneRosBridge:
             self.release_object()
             print('Robotiq released the object', flush=True)
         self.previous_requested_close = self.requested_close
-
-        if self.object_attached:
-            self.update_attached_pose()
 
         self.frames_since_publish += 1
         if self.frames_since_publish >= 6:
