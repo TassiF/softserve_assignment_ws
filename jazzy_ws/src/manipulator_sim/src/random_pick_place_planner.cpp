@@ -44,7 +44,7 @@ public:
   : node_(node), random_engine_(std::random_device{}())
   {
     planning_group_ = parameter<std::string>("planning_group", "ur_manipulator");
-    end_effector_link_ = parameter<std::string>("end_effector_link", "wrist_3_link");
+    end_effector_link_ = parameter<std::string>("end_effector_link", "gripper_tcp");
     gripper_mount_link_ = parameter<std::string>("gripper_mount_link", "wrist_3_link");
     planner_id_ = parameter<std::string>("planner_id", "");
     planning_time_s_ = parameter<double>("planning_time", 8.0);
@@ -80,8 +80,8 @@ public:
 
     grasp_orientation_ = quaternion_parameter(
       "grasp_orientation_xyzw", {0.70710678, 0.70710678, 0.0, 0.0});
-    object_to_wrist_offset_ = vector3_parameter(
-      "object_to_wrist_offset", {0.0, 0.0, -0.26});
+    object_to_tcp_offset_ = vector3_parameter(
+      "object_to_tcp_offset", {0.0, 0.0, 0.0});
     object_id_ = parameter<std::string>("object_id", "pick_object");
     object_size_ = positive_vector3_parameter("object_size", {0.055, 0.055, 0.055});
     bin_centers_ = bin_centers_parameter();
@@ -97,9 +97,9 @@ public:
     gripper_body_position_ = vector3_parameter(
       "gripper_body_position", {0.0, 0.0, 0.10});
     gripper_finger_size_ = positive_vector3_parameter(
-      "gripper_finger_size", {0.025, 0.035, 0.14});
+      "gripper_finger_size", {0.025, 0.035, 0.07});
     gripper_finger_positions_ = parameter<std::vector<double>>(
-      "gripper_finger_positions", {-0.055, 0.0, 0.22, 0.055, 0.0, 0.22});
+      "gripper_finger_positions", {-0.055, 0.0, 0.185, 0.055, 0.0, 0.185});
     if (gripper_finger_positions_.size() != 6 ||
       !all_finite(gripper_finger_positions_))
     {
@@ -635,14 +635,14 @@ private:
       vector[2] + 2.0 * (quaternion.w * cross_one[2] + cross_two[2])};
   }
 
-  geometry_msgs::msg::PoseStamped wrist_pose_for_object(
+  geometry_msgs::msg::PoseStamped tcp_pose_for_object(
     const geometry_msgs::msg::PoseStamped & object_pose) const
   {
     geometry_msgs::msg::PoseStamped wrist_pose;
     wrist_pose.header = object_pose.header;
     wrist_pose.header.stamp = node_->now();
     wrist_pose.pose.orientation = grasp_orientation_;
-    const auto offset = rotate_vector(grasp_orientation_, object_to_wrist_offset_);
+    const auto offset = rotate_vector(grasp_orientation_, object_to_tcp_offset_);
     wrist_pose.pose.position.x = object_pose.pose.position.x + offset[0];
     wrist_pose.pose.position.y = object_pose.pose.position.y + offset[1];
     wrist_pose.pose.position.z = object_pose.pose.position.z + offset[2];
@@ -829,7 +829,7 @@ private:
     }
     target_log("measured object", object_pose);
 
-    auto pick_contact = wrist_pose_for_object(object_pose);
+    auto pick_contact = tcp_pose_for_object(object_pose);
     auto pick_approach = pick_contact;
     pick_approach.pose.position.z += approach_height_m_;
     if (!plan_and_execute(move_group, pick_approach, "pick approach")) {
@@ -880,7 +880,7 @@ private:
     drop_object_pose.pose.position.y = selected_bin.center[1];
     drop_object_pose.pose.position.z = selected_bin.center[2] + bin_drop_height_;
     drop_object_pose.pose.orientation.w = 1.0;
-    auto place_contact = wrist_pose_for_object(drop_object_pose);
+    auto place_contact = tcp_pose_for_object(drop_object_pose);
     auto place_approach = place_contact;
     place_approach.pose.position.z += approach_height_m_;
     if (!plan_and_execute(move_group, place_approach, "place approach") ||
@@ -990,7 +990,7 @@ private:
   int minimum_state_samples_{3};
   std::vector<std::string> joint_names_;
   geometry_msgs::msg::Quaternion grasp_orientation_;
-  Vector3 object_to_wrist_offset_{};
+  Vector3 object_to_tcp_offset_{};
   std::string object_id_;
   Vector3 object_size_{};
   std::vector<Bin> bin_centers_;

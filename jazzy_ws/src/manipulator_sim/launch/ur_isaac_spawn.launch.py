@@ -28,9 +28,8 @@ def generate_launch_description():
     max_cycles = LaunchConfiguration('max_cycles')
 
     manipulator_share = get_package_share_directory('manipulator_sim')
-    ur_description_share = get_package_share_directory('ur_description')
     urdf_xacro = os.path.join(
-        ur_description_share, 'urdf', 'ur.urdf.xacro'
+        manipulator_share, 'urdf', 'ur_with_gripper_tcp.urdf.xacro'
     )
     moveit_controllers = os.path.join(
         manipulator_share, 'config', 'moveit_controllers.yaml'

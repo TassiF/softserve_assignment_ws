@@ -20,8 +20,8 @@ isaac_joint_trajectory_controller:
 random_pick_place_planner:
   ros__parameters:
     planning_group: ur_manipulator
-    # The integrated 2F-140 is mounted on wrist_3_link in the Isaac asset.
-    end_effector_link: wrist_3_link
+    # MoveIt targets the TCP at the center of the gripper finger tips.
+    end_effector_link: gripper_tcp
     gripper_mount_link: wrist_3_link
     # Empty selects OMPL's configured/default planner (RRTConnect here).
     planner_id: ''
@@ -53,9 +53,11 @@ random_pick_place_planner:
 
     # The fixed grasp orientation is [x, y, z, w]. It points the 2F-140 down.
     grasp_orientation_xyzw: [0.70710678, 0.70710678, 0.0, 0.0]
-    # Offset from the object center to wrist_3_link, expressed after applying
-    # grasp_orientation_xyzw. The object therefore sits at +0.26 m on wrist z.
-    object_to_wrist_offset: [0.0, 0.0, -0.26]
+    # Offset from the object center to gripper_tcp, expressed after applying
+    # grasp_orientation_xyzw.
+    object_to_tcp_offset: [0.0, 0.0, 0.0]
+    # The physical gripper TCP is at the center of the finger tips.
+    tcp_offset_from_wrist: [0.0, 0.0, 0.22]
 
     # Isaac owns the object's randomized pose and publishes the measured pose.
     object_id: pick_object
@@ -86,8 +88,10 @@ random_pick_place_planner:
     # Conservative collision proxy attached to wrist_3_link in MoveIt.
     gripper_body_size: [0.14, 0.14, 0.18]
     gripper_body_position: [0.0, 0.0, 0.10]
-    gripper_finger_size: [0.025, 0.035, 0.14]
-    gripper_finger_positions: [-0.070, 0.0, 0.22, 0.070, 0.0, 0.22]
+    # Keep the collision proxy above the ground when the TCP is at the object
+    # center; the Isaac asset remains responsible for the actual finger shape.
+    gripper_finger_size: [0.025, 0.035, 0.07]
+    gripper_finger_positions: [-0.070, 0.0, 0.185, 0.070, 0.0, 0.185]
     # The proxy may overlap the wrist chain at its mount. Environment
     # collisions remain enabled, including collisions with the obstacle/bins.
     gripper_touch_links:
@@ -105,6 +109,6 @@ random_pick_place_planner:
     # Isaac gripper control and deterministic grasp confirmation.
     gripper_open_position: 0.0
     gripper_closed_position: 0.65
-    max_grasp_distance: 0.10
+    max_grasp_distance: 0.035
     gripper_command_topic: /pick_place/gripper_close
     grasp_state_topic: /pick_place/grasp_attached

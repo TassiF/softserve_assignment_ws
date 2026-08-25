@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="$(arg name)">
+  <xacro:arg name="name" default="ur" />
+  <xacro:arg name="ur_type" default="ur10e" />
+  <xacro:arg name="tf_prefix" default="" />
+  <xacro:arg name="joint_limit_params" default="$(find ur_description)/config/$(arg ur_type)/joint_limits.yaml" />
+  <xacro:arg name="kinematics_params" default="$(find ur_description)/config/$(arg ur_type)/default_kinematics.yaml" />
+  <xacro:arg name="physical_params" default="$(find ur_description)/config/$(arg ur_type)/physical_parameters.yaml" />
+  <xacro:arg name="visual_params" default="$(find ur_description)/config/$(arg ur_type)/visual_parameters.yaml" />
+  <xacro:arg name="transmission_hw_interface" default="" />
+  <xacro:arg name="safety_limits" default="false" />
+  <xacro:arg name="safety_pos_margin" default="0.15" />
+  <xacro:arg name="safety_k_position" default="20" />
+  <xacro:arg name="force_abs_paths" default="false" />
+
+  <link name="world" />
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro" />
+  <xacro:ur_robot
+    name="$(arg name)"
+    tf_prefix="$(arg tf_prefix)"
+    parent="world"
+    joint_limits_parameters_file="$(arg joint_limit_params)"
+    kinematics_parameters_file="$(arg kinematics_params)"
+    physical_parameters_file="$(arg physical_params)"
+    visual_parameters_file="$(arg visual_params)"
+    safety_limits="$(arg safety_limits)"
+    safety_pos_margin="$(arg safety_pos_margin)"
+    safety_k_position="$(arg safety_k_position)"
+    force_abs_paths="$(arg force_abs_paths)">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </xacro:ur_robot>
+
+  <!-- TCP is at the center of the closed gripper's finger tips. -->
+  <link name="$(arg tf_prefix)gripper_tcp" />
+  <joint name="$(arg tf_prefix)wrist_3_link-gripper_tcp" type="fixed">
+    <parent link="$(arg tf_prefix)wrist_3_link" />
+    <child link="$(arg tf_prefix)gripper_tcp" />
+    <origin xyz="0 0 0.22" rpy="0 0 0" />
+  </joint>
+</robot>

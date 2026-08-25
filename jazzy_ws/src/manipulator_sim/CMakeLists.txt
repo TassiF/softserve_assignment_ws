@@ -58,7 +58,7 @@ ament_target_dependencies(
 )
 
 install(
-  DIRECTORY config launch scripts
+  DIRECTORY config launch scripts urdf
   DESTINATION share/${PROJECT_NAME}
   PATTERN "__pycache__" EXCLUDE
   PATTERN "*.pyc" EXCLUDE

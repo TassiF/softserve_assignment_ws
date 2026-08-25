@@ -410,11 +410,14 @@ class SceneRosBridge:
         self.object_size = require_positive_vector(parameters, 'object_size', 3)
         self.spawn_min = require_vector(parameters, 'object_spawn_min', 3)
         self.spawn_max = require_vector(parameters, 'object_spawn_max', 3)
-        self.object_to_wrist_offset = require_vector(
-            parameters, 'object_to_wrist_offset', 3
+        self.object_to_tcp_offset = require_vector(
+            parameters, 'object_to_tcp_offset', 3
+        )
+        self.tcp_offset_from_wrist = require_vector(
+            parameters, 'tcp_offset_from_wrist', 3
         )
         self.expected_grasp_distance = float(
-            np.linalg.norm(self.object_to_wrist_offset)
+            np.linalg.norm(self.object_to_tcp_offset)
         )
         if np.any(self.spawn_min[:2] >= self.spawn_max[:2]):
             raise RuntimeError('object_spawn_min must precede object_spawn_max in x/y.')
@@ -565,35 +568,35 @@ class SceneRosBridge:
         )
 
     def try_attach_object(self) -> None:
-        wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
+        tcp_position, tcp_orientation = self.tcp_world_pose()
         object_position, object_orientation = self.pick_object.get_world_pose()
-        distance = float(np.linalg.norm(object_position - wrist_position))
+        distance = float(np.linalg.norm(object_position - tcp_position))
         if abs(distance - self.expected_grasp_distance) > self.max_grasp_distance:
             print(
-                'Grasp rejected: object/wrist distance '
+                'Grasp rejected: object/TCP distance '
                 f'{distance:.3f} m (expected {self.expected_grasp_distance:.3f} m)',
                 flush=True,
             )
             return
 
-        inverse_wrist = quaternion_conjugate(wrist_orientation)
+        inverse_tcp = quaternion_conjugate(tcp_orientation)
         self.relative_position = rotate_vector(
-            inverse_wrist, np.asarray(object_position) - wrist_position
+            inverse_tcp, np.asarray(object_position) - tcp_position
         )
         self.relative_orientation = quaternion_multiply(
-            inverse_wrist, np.asarray(object_orientation)
+            inverse_tcp, np.asarray(object_orientation)
         )
         self.kinematic_attribute.Set(True)
         self.object_attached = True
         print('Robotiq grasp attached the object', flush=True)
 
     def update_attached_pose(self) -> None:
-        wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
-        object_position = wrist_position + rotate_vector(
-            wrist_orientation, self.relative_position
+        tcp_position, tcp_orientation = self.tcp_world_pose()
+        object_position = tcp_position + rotate_vector(
+            tcp_orientation, self.relative_position
         )
         object_orientation = quaternion_multiply(
-            wrist_orientation, self.relative_orientation
+            tcp_orientation, self.relative_orientation
         )
         # PhysX tensor transforms use [x, y, z, qx, qy, qz, qw], whereas the
         # Isaac high-level APIs and our quaternion helpers use [w, x, y, z].
@@ -607,6 +610,13 @@ class SceneRosBridge:
         self.object_physics_view.set_kinematic_targets(
             target, self.object_indices
         )
+
+    def tcp_world_pose(self) -> tuple[np.ndarray, np.ndarray]:
+        wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
+        tcp_position = wrist_position + rotate_vector(
+            wrist_orientation, self.tcp_offset_from_wrist
+        )
+        return tcp_position, wrist_orientation
 
     def update(self, _: float) -> None:
         rclpy.spin_once(self.node, timeout_sec=0.0)
