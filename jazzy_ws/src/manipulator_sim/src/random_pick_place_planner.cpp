@@ -1,3 +1,19 @@
+// Developer: Francesco Tassi
+// Email: francesco.tassi@iit.it
+//
+// Motion planning for a pick/place task with a UR manipulator in IsaacSim. The planner uses MoveIt to plan the collision-free arm motion and communicates with the simulator to get the object pose and grasp state.
+// Topics:
+//  - /pick_place/goal_pose (geometry_msgs/PoseStamped): publishes the goal pose for the pick/place task
+//  - /pick_place/gripper_close (std_msgs/Bool): publishes the gripper command to close/open the gripper
+//  - /pick_place/reset_object (std_msgs/Empty): publishes a message to reset the object in the simulator
+//  - /pick_place/selected_bin (std_msgs/Int32): publishes the index of the selected bin for placing the object
+//  - /pick_place/status (std_msgs/String): publishes the status of the planner
+// Subscriptions:
+//  - /joint_states (sensor_msgs/JointState): subscribes to the joint states of the manipulator
+//  - /pick_place/object_pose (geometry_msgs/PoseStamped): subscribes to the pose of the object in the simulator
+//  - /pick_place/object_generation (std_msgs/UInt32): subscribes to the object generation number in the simulator
+//  - /pick_place/grasp_attached (std_msgs/Bool): subscribes to the grasp state of the object in the simulator
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -50,6 +66,7 @@ public:
     planning_time_s_ = parameter<double>("planning_time", 8.0);
     planning_attempts_ = static_cast<int>(parameter<int64_t>("planning_attempts", 8));
     planning_retries_ = static_cast<int>(parameter<int64_t>("planning_retries", 4));
+    cycle_retries_ = static_cast<int>(parameter<int64_t>("cycle_retries", 3));
     velocity_scaling_ = parameter<double>("velocity_scaling", 0.2);
     acceleration_scaling_ = parameter<double>("acceleration_scaling", 0.2);
     position_tolerance_m_ = parameter<double>("position_tolerance", 0.01);
@@ -63,12 +80,9 @@ public:
     max_cycles_ = static_cast<int>(parameter<int64_t>("max_cycles", 0));
     const auto seed = parameter<int64_t>("random_seed", -1);
 
-    joint_state_topic_ = parameter<std::string>("joint_state_topic", "/joint_states");
     joint_state_timeout_s_ = parameter<double>("joint_state_timeout", 1.0);
-    minimum_state_samples_ = static_cast<int>(
-      parameter<int64_t>("minimum_state_samples", 3));
-    joint_names_ = parameter<std::vector<std::string>>(
-      "joint_names",
+    minimum_state_samples_ = static_cast<int>(parameter<int64_t>("minimum_state_samples", 3));
+    joint_names_ = parameter<std::vector<std::string>>("joint_names",
       {
         "shoulder_pan_joint",
         "shoulder_lift_joint",
@@ -78,10 +92,11 @@ public:
         "wrist_3_joint",
       });
 
-    grasp_orientation_ = quaternion_parameter(
-      "grasp_orientation_xyzw", {0.70710678, 0.70710678, 0.0, 0.0});
-    object_to_tcp_offset_ = vector3_parameter(
-      "object_to_tcp_offset", {0.0, 0.0, 0.0});
+
+    //Definition of homing pose
+    homing_pose_ = {0.4, -0.3, 0.05};
+    grasp_orientation_ = quaternion_parameter("grasp_orientation_xyzw", {0.70710678, 0.70710678, 0.0, 0.0});
+    object_to_tcp_offset_ = vector3_parameter("object_to_tcp_offset", {0.0, 0.0, 0.0});
     object_id_ = parameter<std::string>("object_id", "pick_object");
     object_size_ = positive_vector3_parameter("object_size", {0.055, 0.055, 0.055});
     bin_centers_ = bin_centers_parameter();
@@ -92,55 +107,33 @@ public:
     obstacle_position_ = vector3_parameter("obstacle_position", {0.62, 0.05, 0.25});
     obstacle_size_ = positive_vector3_parameter("obstacle_size", {0.22, 0.16, 0.50});
     ground_size_ = positive_vector3_parameter("ground_size", {2.4, 2.4, 0.05});
-    gripper_body_size_ = positive_vector3_parameter(
-      "gripper_body_size", {0.14, 0.14, 0.18});
-    gripper_body_position_ = vector3_parameter(
-      "gripper_body_position", {0.0, 0.0, 0.10});
-    gripper_finger_size_ = positive_vector3_parameter(
-      "gripper_finger_size", {0.025, 0.035, 0.07});
-    gripper_finger_positions_ = parameter<std::vector<double>>(
-      "gripper_finger_positions", {-0.055, 0.0, 0.185, 0.055, 0.0, 0.185});
-    if (gripper_finger_positions_.size() != 6 ||
-      !all_finite(gripper_finger_positions_))
-    {
-      throw std::invalid_argument(
-              "gripper_finger_positions must contain two finite xyz positions");
+    gripper_body_size_ = positive_vector3_parameter("gripper_body_size", {0.14, 0.14, 0.18});
+    gripper_body_position_ = vector3_parameter("gripper_body_position", {0.0, 0.0, 0.10});
+    gripper_finger_size_ = positive_vector3_parameter("gripper_finger_size", {0.025, 0.035, 0.07});
+    gripper_finger_positions_ = parameter<std::vector<double>>("gripper_finger_positions", {-0.055, 0.0, 0.185, 0.055, 0.0, 0.185});
+    if (gripper_finger_positions_.size() != 6 || !all_finite(gripper_finger_positions_)) {
+      throw std::invalid_argument("gripper_finger_positions must contain two finite xyz positions");
     }
 
-    object_pose_topic_ = parameter<std::string>(
-      "object_pose_topic", "/pick_place/object_pose");
-    object_generation_topic_ = parameter<std::string>(
-      "object_generation_topic", "/pick_place/object_generation");
-    reset_object_topic_ = parameter<std::string>(
-      "reset_object_topic", "/pick_place/reset_object");
-    gripper_command_topic_ = parameter<std::string>(
-      "gripper_command_topic", "/pick_place/gripper_close");
-    grasp_state_topic_ = parameter<std::string>(
-      "grasp_state_topic", "/pick_place/grasp_attached");
+    joint_state_topic_ = parameter<std::string>("joint_state_topic", "/joint_states");
+    object_pose_topic_ = parameter<std::string>("object_pose_topic", "/pick_place/object_pose");
+    object_generation_topic_ = parameter<std::string>("object_generation_topic", "/pick_place/object_generation");
+    reset_object_topic_ = parameter<std::string>("reset_object_topic", "/pick_place/reset_object");
+    gripper_command_topic_ = parameter<std::string>("gripper_command_topic", "/pick_place/gripper_close");
+    grasp_state_topic_ = parameter<std::string>("grasp_state_topic", "/pick_place/grasp_attached");
 
-    touch_links_ = parameter<std::vector<std::string>>(
-      "gripper_touch_links",
-      {
-        "base_link", "base_link_inertia", "shoulder_link", "upper_arm_link",
-        "forearm_link", "wrist_1_link", "wrist_2_link", "wrist_3_link",
-        "flange", "tool0",
-      });
+    touch_links_ = parameter<std::vector<std::string>>("gripper_touch_links", {"base_link", "base_link_inertia", "shoulder_link", "upper_arm_link", "forearm_link", "wrist_1_link", "wrist_2_link", "wrist_3_link", "flange", "tool0"});
 
     validate_parameters();
     if (seed >= 0) {
       random_engine_.seed(static_cast<std::mt19937::result_type>(seed));
     }
 
-    goal_publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
-      "/pick_place/goal_pose", rclcpp::QoS(10).reliable());
-    gripper_publisher_ = node_->create_publisher<std_msgs::msg::Bool>(
-      gripper_command_topic_, rclcpp::QoS(10).reliable());
-    reset_object_publisher_ = node_->create_publisher<std_msgs::msg::Empty>(
-      reset_object_topic_, rclcpp::QoS(10).reliable());
-    selected_bin_publisher_ = node_->create_publisher<std_msgs::msg::Int32>(
-      "/pick_place/selected_bin", rclcpp::QoS(1).transient_local().reliable());
-    status_publisher_ = node_->create_publisher<std_msgs::msg::String>(
-      "/pick_place/status", rclcpp::QoS(10).transient_local().reliable());
+    goal_publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/pick_place/goal_pose", rclcpp::QoS(10).reliable());
+    gripper_publisher_ = node_->create_publisher<std_msgs::msg::Bool>(gripper_command_topic_, rclcpp::QoS(10).reliable());
+    reset_object_publisher_ = node_->create_publisher<std_msgs::msg::Empty>(reset_object_topic_, rclcpp::QoS(10).reliable());
+    selected_bin_publisher_ = node_->create_publisher<std_msgs::msg::Int32>("/pick_place/selected_bin", rclcpp::QoS(1).transient_local().reliable());
+    status_publisher_ = node_->create_publisher<std_msgs::msg::String>("/pick_place/status", rclcpp::QoS(10).transient_local().reliable());
 
     joint_state_subscription_ = node_->create_subscription<sensor_msgs::msg::JointState>(
       joint_state_topic_, rclcpp::SensorDataQoS(),
@@ -172,38 +165,44 @@ public:
 
     move_group.startStateMonitor();
     while (rclcpp::ok()) {
-      if (move_group.getCurrentState(1.0) && has_fresh_joint_state_stream() &&
-        wait_for_initial_scene(0.1))
-      {
+      if (move_group.getCurrentState(1.0) && has_fresh_joint_state_stream() && wait_for_initial_scene(0.1)){
         break;
       }
-      RCLCPP_WARN_THROTTLE(
-        node_->get_logger(), *node_->get_clock(), 5000,
-        ANSI_COLOR_WARN "Waiting for complete arm state and Isaac object/grasp state" ANSI_COLOR_RESET);
+      RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, ANSI_COLOR_WARN "Waiting for complete arm state and Isaac object/grasp state" ANSI_COLOR_RESET);
     }
     if (!rclcpp::ok()) {
       return;
     }
 
     initialize_fixed_planning_scene();
-    RCLCPP_INFO(
-      node_->get_logger(),
-      ANSI_COLOR_INFO "Physical pick/place planner ready (group=%s, wrist=%s, frame=%s)" ANSI_COLOR_RESET,
-      planning_group_.c_str(), end_effector_link_.c_str(), move_group.getPlanningFrame().c_str());
+    RCLCPP_INFO(node_->get_logger(), ANSI_COLOR_INFO "Physical pick/place planner ready (group=%s, wrist=%s, frame=%s)" ANSI_COLOR_RESET, planning_group_.c_str(), end_effector_link_.c_str(), move_group.getPlanningFrame().c_str());
 
     int completed_cycles = 0;
     while (rclcpp::ok() && (max_cycles_ <= 0 || completed_cycles < max_cycles_)) {
-      if (execute_cycle(move_group, completed_cycles + 1)) {
-        ++completed_cycles;
-        RCLCPP_INFO(node_->get_logger(), ANSI_COLOR_INFO "Completed physical pick/place cycle %d" ANSI_COLOR_RESET,
-            completed_cycles);
-      } else if (rclcpp::ok()) {
+      bool cycle_completed = false;
+      for (int attempt = 1; attempt <= cycle_retries_ && rclcpp::ok(); ++attempt) {
+        RCLCPP_INFO(node_->get_logger(), ANSI_COLOR_INFO "Cycle %d attempt %d/%d" ANSI_COLOR_RESET, completed_cycles + 1, attempt, cycle_retries_);
+        if (execute_cycle(move_group, completed_cycles + 1)) {
+          cycle_completed = true;
+          ++completed_cycles;
+          RCLCPP_INFO(node_->get_logger(), ANSI_COLOR_INFO "Completed physical pick/place cycle %d" ANSI_COLOR_RESET, completed_cycles);
+          break;
+        }
+
+        RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Cycle %d attempt %d failed: recovering gripper, MoveIt attachment, and scene" ANSI_COLOR_RESET, completed_cycles + 1, attempt);
         recover_from_failure(move_group);
-        publish_status("Cycle failed; respawning the object after retry delay");
-        interruptible_sleep(retry_delay_s_);
+        if (attempt < cycle_retries_ && rclcpp::ok()) {
+          RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Replan strategy: respawn a fresh object, reset grasp state, and retry the full cycle (%d attempt(s) left)" ANSI_COLOR_RESET, cycle_retries_ - attempt);
+          publish_status("Retrying failed cycle with a fresh object and full replan");
+          interruptible_sleep(retry_delay_s_);
+        } else {
+          RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Cycle %d aborted after %d failed attempt(s)" ANSI_COLOR_RESET, completed_cycles + 1, attempt);
+        }
+      }
+      if (!cycle_completed && rclcpp::ok()) {
+        publish_status("Cycle retry limit reached; starting a new cycle");
       }
     }
-
     recover_from_failure(move_group);
     publish_status("Pick/place planner stopped");
   }
@@ -216,9 +215,7 @@ private:
     Vector3 center;
   };
 
-  template<typename T>
-  T parameter(const std::string & name, const T & default_value)
-  {
+  template<typename T> T parameter(const std::string & name, const T & default_value) {
     if (!node_->has_parameter(name)) {
       node_->declare_parameter<T>(name, default_value);
     }
@@ -235,8 +232,7 @@ private:
       values.begin(), values.end(), [](double value) {return std::isfinite(value);});
   }
 
-  Vector3 vector3_parameter(
-    const std::string & name, const std::vector<double> & default_value)
+  Vector3 vector3_parameter(const std::string & name, const std::vector<double> & default_value)
   {
     const auto values = parameter<std::vector<double>>(name, default_value);
     if (values.size() != 3 || !all_finite(values)) {
@@ -292,9 +288,10 @@ private:
 
   void validate_parameters() const
   {
-    if (planning_time_s_ <= 0.0 || planning_attempts_ <= 0 || planning_retries_ <= 0) {
+    if (planning_time_s_ <= 0.0 || planning_attempts_ <= 0 || planning_retries_ <= 0 ||
+      cycle_retries_ <= 0) {
       throw std::invalid_argument(
-              "planning_time, planning_attempts, and planning_retries must be positive");
+              "planning_time, planning_attempts, planning_retries, and cycle_retries must be positive");
     }
     if (approach_height_m_ <= 0.0 || cartesian_step_m_ <= 0.0 ||
       scene_timeout_s_ <= 0.0 ||
@@ -635,9 +632,7 @@ private:
       vector[2] + 2.0 * (quaternion.w * cross_one[2] + cross_two[2])};
   }
 
-  geometry_msgs::msg::PoseStamped tcp_pose_for_object(
-    const geometry_msgs::msg::PoseStamped & object_pose) const
-  {
+  geometry_msgs::msg::PoseStamped tcp_pose_for_object(const geometry_msgs::msg::PoseStamped & object_pose) const {
     geometry_msgs::msg::PoseStamped wrist_pose;
     wrist_pose.header = object_pose.header;
     wrist_pose.header.stamp = node_->now();
@@ -699,8 +694,7 @@ private:
     move_group.setStartStateToCurrentState();
     moveit_msgs::msg::RobotTrajectory trajectory_message;
     moveit_msgs::msg::MoveItErrorCodes error_code;
-    const double fraction = move_group.computeCartesianPath(
-      {target.pose}, cartesian_step_m_, trajectory_message, true, &error_code);
+    const double fraction = move_group.computeCartesianPath({target.pose}, cartesian_step_m_, trajectory_message, true, &error_code);
     if (fraction < 0.999) {
       RCLCPP_WARN(
         node_->get_logger(),
@@ -776,9 +770,7 @@ private:
     return true;
   }
 
-  bool detach_object_in_moveit(
-    moveit::planning_interface::MoveGroupInterface & move_group)
-  {
+  bool detach_object_in_moveit(moveit::planning_interface::MoveGroupInterface & move_group) {
     if (!planning_object_attached_) {
       return true;
     }
@@ -883,9 +875,7 @@ private:
     auto place_contact = tcp_pose_for_object(drop_object_pose);
     auto place_approach = place_contact;
     place_approach.pose.position.z += approach_height_m_;
-    if (!plan_and_execute(move_group, place_approach, "place approach") ||
-      !cartesian_execute(move_group, place_contact, "place contact"))
-    {
+    if (!plan_and_execute(move_group, place_approach, "place approach") || !cartesian_execute(move_group, place_contact, "place contact")) {
       return false;
     }
 
@@ -909,9 +899,7 @@ private:
         [this, &selected_bin]() {return object_is_in_bin(selected_bin);},
         placement_timeout_s_))
     {
-      RCLCPP_ERROR(
-        node_->get_logger(), ANSI_COLOR_ERROR "The measured object pose did not settle inside bin %zu" ANSI_COLOR_RESET,
-        bin_index);
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "The measured object pose did not settle inside bin %zu" ANSI_COLOR_RESET, bin_index);
       return false;
     }
 
@@ -921,9 +909,20 @@ private:
     return true;
   }
 
-  void recover_from_failure(
-    moveit::planning_interface::MoveGroupInterface & move_group)
-  {
+  void recover_from_failure(moveit::planning_interface::MoveGroupInterface & move_group) {
+    geometry_msgs::msg::PoseStamped emergency_homing_pose;
+    emergency_homing_pose.header.frame_id = move_group.getPlanningFrame();
+    emergency_homing_pose.header.stamp = node_->now();
+    emergency_homing_pose.pose.position.x = homing_pose_[0];
+    emergency_homing_pose.pose.position.y = homing_pose_[1];
+    emergency_homing_pose.pose.position.z = homing_pose_[2];
+    emergency_homing_pose.pose.orientation = grasp_orientation_;
+    RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Recovering from failure: moving to homing position [%.3f, %.3f, %.3f]" ANSI_COLOR_RESET,
+                emergency_homing_pose.pose.position.x, emergency_homing_pose.pose.position.y, emergency_homing_pose.pose.position.z);
+    if (!plan_and_execute(move_group, emergency_homing_pose, "emergency homing")) {
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "FATAL: Could not execute emergency homing. Opening gripper and resetting object." ANSI_COLOR_RESET);
+    }
+
     std_msgs::msg::Bool open_message;
     open_message.data = false;
     gripper_publisher_->publish(open_message);
@@ -933,7 +932,7 @@ private:
         return have_grasp_state_ && !grasp_attached_;
       }, std::min(2.0, scene_timeout_s_));
     if (!detach_object_in_moveit(move_group)) {
-      RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_ERROR "Failure recovery could not detach the MoveIt object" ANSI_COLOR_RESET);
+      RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Failure recovery could not detach the MoveIt object" ANSI_COLOR_RESET);
     }
   }
 
@@ -973,6 +972,7 @@ private:
   double planning_time_s_{8.0};
   int planning_attempts_{8};
   int planning_retries_{4};
+  int cycle_retries_{3};
   double velocity_scaling_{0.2};
   double acceleration_scaling_{0.2};
   double position_tolerance_m_{0.01};
@@ -1006,6 +1006,7 @@ private:
   Vector3 gripper_finger_size_{};
   std::vector<double> gripper_finger_positions_;
   std::vector<std::string> touch_links_;
+  Vector3 homing_pose_{};
 
   std::string object_pose_topic_;
   std::string object_generation_topic_;

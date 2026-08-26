@@ -94,6 +94,9 @@ GRIPPER_JOINT_NAMES = [
 ]
 GRIPPER_DRIVE_JOINT_NAME = 'finger_joint'
 
+def prRed(s): print("\033[91m {}\033[00m".format(s))
+def prGreen(s): print("\033[92m {}\033[00m".format(s))
+def prYellow(s): print("\033[93m {}\033[00m".format(s))
 
 def require_vector(
     parameters: dict[str, Any], name: str, length: int
@@ -556,16 +559,16 @@ class SceneRosBridge:
         self.pick_object.set_world_pose(
             position=position,
             orientation=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            # orientation=np.array([self.random_generator.uniform(0, 1), 0.0, 0.0, 0.0], dtype=np.float32),
         )
         self.pick_object.set_linear_velocity(np.zeros(3, dtype=np.float32))
         self.pick_object.set_angular_velocity(np.zeros(3, dtype=np.float32))
         self.object_generation += 1
         self.reset_pending = False
         self.publish_state()
-        print(
+        prGreen(
             f'Spawned object generation {self.object_generation} at '
             f'{position.tolist()}',
-            flush=True,
         )
 
     def try_attach_object(self) -> None:

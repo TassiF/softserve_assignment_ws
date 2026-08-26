@@ -28,6 +28,7 @@ random_pick_place_planner:
     planning_time: 8.0
     planning_attempts: 8
     planning_retries: 4
+    cycle_retries: 3
     velocity_scaling: 0.20
     acceleration_scaling: 0.20
     position_tolerance: 0.01
