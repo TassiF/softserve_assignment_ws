@@ -38,20 +38,20 @@ simulation_app = SimulationApp({'headless': args.headless})
 
 
 # Isaac Sim and ROS imports must occur after SimulationApp creation.
-import omni.graph.core as og  # noqa: E402, I100
-import omni.usd  # noqa: E402, I100
-import rclpy  # noqa: E402, I100
-import usdrt.Sdf  # noqa: E402, I100
-from geometry_msgs.msg import PoseStamped  # noqa: E402, I100
-from isaacsim.core.api import World  # noqa: E402, I100
-from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid  # noqa: E402, I100
-from isaacsim.core.prims import SingleArticulation  # noqa: E402, I100
-from isaacsim.core.utils import extensions, viewports  # noqa: E402, I100
-from isaacsim.core.utils.stage import add_reference_to_stage  # noqa: E402, I100
-from isaacsim.core.utils.types import ArticulationAction  # noqa: E402, I100
-from isaacsim.storage.native import get_assets_root_path  # noqa: E402, I100
-from pxr import Gf, Sdf, Usd, UsdPhysics  # noqa: E402, I100
-from rclpy.qos import (  # noqa: E402, I100
+import omni.graph.core as og
+import omni.usd
+import rclpy
+import usdrt.Sdf
+from geometry_msgs.msg import PoseStamped
+from isaacsim.core.api import World
+from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid
+from isaacsim.core.prims import SingleArticulation
+from isaacsim.core.utils import extensions, viewports
+from isaacsim.core.utils.stage import add_reference_to_stage
+from isaacsim.core.utils.types import ArticulationAction
+from isaacsim.storage.native import get_assets_root_path
+from pxr import Gf, Sdf, Usd, UsdPhysics
+from rclpy.qos import (
     DurabilityPolicy,
     QoSProfile,
     ReliabilityPolicy,
@@ -98,9 +98,7 @@ def prRed(s): print("\033[91m {}\033[00m".format(s))
 def prGreen(s): print("\033[92m {}\033[00m".format(s))
 def prYellow(s): print("\033[93m {}\033[00m".format(s))
 
-def require_vector(
-    parameters: dict[str, Any], name: str, length: int
-) -> np.ndarray:
+def require_vector(parameters: dict[str, Any], name: str, length: int) -> np.ndarray:
     value = np.asarray(parameters.get(name, []), dtype=np.float64)
     if value.shape != (length,) or not np.all(np.isfinite(value)):
         raise RuntimeError(
@@ -108,31 +106,20 @@ def require_vector(
         )
     return value
 
-
-def require_positive_vector(
-    parameters: dict[str, Any], name: str, length: int
-) -> np.ndarray:
+def require_positive_vector(parameters: dict[str, Any], name: str, length: int) -> np.ndarray:
     value = require_vector(parameters, name, length)
     if np.any(value <= 0.0):
         raise RuntimeError(f'Scene parameter {name!r} must be positive.')
     return value
 
-
 def load_scene_parameters() -> dict[str, Any]:
-    config_path = Path(
-        os.environ.get(
-            'UR_SCENE_CONFIG',
-            Path(__file__).resolve().parents[1] / 'config' / 'pick_place.yaml',
-        )
-    )
+    config_path = Path(os.environ.get('UR_SCENE_CONFIG', Path(__file__).resolve().parents[1] / 'config' / 'pick_place.yaml',))
     try:
         with config_path.open('r', encoding='utf-8') as config_file:
             document = yaml.safe_load(config_file)
         parameters = document['random_pick_place_planner']['ros__parameters']
     except (OSError, KeyError, TypeError, yaml.YAMLError) as exception:
-        raise RuntimeError(
-            f'Could not load pick/place scene configuration from {config_path}.'
-        ) from exception
+        raise RuntimeError(f'Could not load pick/place scene configuration from {config_path}.') from exception
     if not isinstance(parameters, dict):
         raise RuntimeError('The pick/place ROS parameter block must be a mapping.')
     return parameters
@@ -141,18 +128,11 @@ def load_scene_parameters() -> dict[str, Any]:
 def read_initial_joint_positions() -> np.ndarray:
     raw_value = os.environ.get('UR_INITIAL_JOINTS', '-1.5708,-1.5708,1.5708,-1.5708,-1.5708,0.0')
     try:
-        values = np.asarray(
-            [float(component.strip()) for component in raw_value.split(',')],
-            dtype=np.float32,
-        )
+        values = np.asarray([float(component.strip()) for component in raw_value.split(',')], dtype=np.float32)
     except ValueError as exception:
-        raise RuntimeError(
-            'UR_INITIAL_JOINTS must contain six numeric comma-separated values.'
-        ) from exception
+        raise RuntimeError('UR_INITIAL_JOINTS must contain six numeric comma-separated values.') from exception
     if values.shape != (6,) or not np.all(np.isfinite(values)):
-        raise RuntimeError(
-            'UR_INITIAL_JOINTS must contain exactly six finite values.'
-        )
+        raise RuntimeError('UR_INITIAL_JOINTS must contain exactly six finite values.')
     return values
 
 
@@ -167,9 +147,7 @@ def find_unique_descendant(stage: Usd.Stage, root_path: str, predicate: Any, des
         and predicate(prim)
     ]
     if len(matching_paths) != 1:
-        raise RuntimeError(
-            f'Expected one {description} below {root_path}, found {matching_paths}.'
-        )
+        raise RuntimeError(f'Expected one {description} below {root_path}, found {matching_paths}.')
     return matching_paths[0]
 
 
@@ -256,7 +234,6 @@ def create_ros_action_graph(articulation_root_path: str) -> None:
         },
     )
 
-
 def add_fixed_cuboid(
     world: World,
     name: str,
@@ -274,7 +251,6 @@ def add_fixed_cuboid(
             color=color,
         )
     )
-
 
 def add_bin(
     world: World,
@@ -370,10 +346,7 @@ def quaternion_multiply(left: np.ndarray, right: np.ndarray) -> np.ndarray:
 
 def rotate_vector(quaternion: np.ndarray, vector: np.ndarray) -> np.ndarray:
     vector_quaternion = np.array([0.0, *vector], dtype=np.float64)
-    return quaternion_multiply(
-        quaternion_multiply(quaternion, vector_quaternion),
-        quaternion_conjugate(quaternion),
-    )[1:]
+    return quaternion_multiply( quaternion_multiply(quaternion, vector_quaternion), quaternion_conjugate(quaternion) )[1:]
 
 
 def prim_world_pose(prim: Usd.Prim) -> tuple[np.ndarray, np.ndarray]:
@@ -383,10 +356,7 @@ def prim_world_pose(prim: Usd.Prim) -> tuple[np.ndarray, np.ndarray]:
     imaginary = rotation.GetImaginary()
     return (
         np.array(translation, dtype=np.float64),
-        np.array(
-            [rotation.GetReal(), imaginary[0], imaginary[1], imaginary[2]],
-            dtype=np.float64,
-        ),
+        np.array([rotation.GetReal(), imaginary[0], imaginary[1], imaginary[2]], dtype=np.float64),
     )
 
 
@@ -411,23 +381,13 @@ class SceneRosBridge:
         self.object_to_tcp_offset = require_vector(
             parameters, 'object_to_tcp_offset', 3
         )
-        self.tcp_offset_from_wrist = require_vector(
-            parameters, 'tcp_offset_from_wrist', 3
-        )
-        self.expected_grasp_distance = float(
-            np.linalg.norm(self.object_to_tcp_offset)
-        )
+        self.tcp_offset_from_wrist = require_vector(parameters, 'tcp_offset_from_wrist', 3)
+        self.expected_grasp_distance = float(np.linalg.norm(self.object_to_tcp_offset))
         if np.any(self.spawn_min[:2] >= self.spawn_max[:2]):
             raise RuntimeError('object_spawn_min must precede object_spawn_max in x/y.')
-        self.gripper_open_position = float(
-            parameters.get('gripper_open_position', 0.0)
-        )
-        self.gripper_closed_position = float(
-            parameters.get('gripper_closed_position', 0.65)
-        )
-        self.max_grasp_distance = float(
-            parameters.get('max_grasp_distance', 0.10)
-        )
+        self.gripper_open_position = float(parameters.get('gripper_open_position', 0.0))
+        self.gripper_closed_position = float(parameters.get('gripper_closed_position', 0.65))
+        self.max_grasp_distance = float(parameters.get('max_grasp_distance', 0.10))
         if (
             not math.isfinite(self.gripper_open_position)
             or not math.isfinite(self.gripper_closed_position)
@@ -438,19 +398,14 @@ class SceneRosBridge:
 
         seed = int(os.environ.get('UR_RANDOM_SEED', '-1'))
         self.random_generator = np.random.default_rng(None if seed < 0 else seed)
-        self.gripper_indices = np.asarray(
-            [self.robot.dof_names.index(GRIPPER_DRIVE_JOINT_NAME)],
-            dtype=np.int32,
-        )
+        self.gripper_indices = np.asarray([self.robot.dof_names.index(GRIPPER_DRIVE_JOINT_NAME)], dtype=np.int32)
         self.requested_close = False
         self.previous_requested_close = False
         self.reset_pending = True
         self.object_attached = False
         self.object_generation = 0
         self.relative_position = np.zeros(3, dtype=np.float64)
-        self.relative_orientation = np.array(
-            [1.0, 0.0, 0.0, 0.0], dtype=np.float64
-        )
+        self.relative_orientation = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
         self.frames_since_publish = 0
 
         if not rclpy.ok():
@@ -461,38 +416,21 @@ class SceneRosBridge:
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
-        self.object_pose_publisher = self.node.create_publisher(
-            PoseStamped, '/pick_place/object_pose', latched_qos
-        )
-        self.generation_publisher = self.node.create_publisher(
-            UInt32, '/pick_place/object_generation', latched_qos
-        )
-        self.grasp_publisher = self.node.create_publisher(
-            Bool, '/pick_place/grasp_attached', latched_qos
-        )
-        self.node.create_subscription(
-            Bool, '/pick_place/gripper_close', self.gripper_callback, 10
-        )
-        self.node.create_subscription(
-            Empty, '/pick_place/reset_object', self.reset_callback, 10
-        )
+        self.object_pose_publisher = self.node.create_publisher(PoseStamped, '/pick_place/object_pose', latched_qos)
+        self.generation_publisher = self.node.create_publisher(UInt32, '/pick_place/object_generation', latched_qos)
+        self.grasp_publisher = self.node.create_publisher(Bool, '/pick_place/grasp_attached', latched_qos)
+        self.node.create_subscription(Bool, '/pick_place/gripper_close', self.gripper_callback, 10)
+        self.node.create_subscription(Empty, '/pick_place/reset_object', self.reset_callback, 10)
 
-        rigid_body = UsdPhysics.RigidBodyAPI(
-            omni.usd.get_context().get_stage().GetPrimAtPath(OBJECT_PRIM_PATH)
-        )
+        rigid_body = UsdPhysics.RigidBodyAPI(omni.usd.get_context().get_stage().GetPrimAtPath(OBJECT_PRIM_PATH))
         self.grasp_joint: UsdPhysics.FixedJoint | None = None
         object_rigid_view = self.pick_object._rigid_prim_view
         if not object_rigid_view.is_physics_handle_valid():
             raise RuntimeError('Pick-object PhysX view was not initialized.')
-        # DynamicCuboid.set_world_pose() teleports the actor, but it does not
-        # update a kinematic actor's target. Keep a dedicated one-body PhysX
-        # view so the attached cube is advanced by the simulation and renderer.
         self.object_physics_view = object_rigid_view._physics_view
         self.object_backend_utils = object_rigid_view._backend_utils
         self.object_physics_device = object_rigid_view._device
-        self.object_indices = self.object_backend_utils.resolve_indices(
-            None, object_rigid_view.count, self.object_physics_device
-        )
+        self.object_indices = self.object_backend_utils.resolve_indices(None, object_rigid_view.count, self.object_physics_device)
 
     def gripper_callback(self, message: Bool) -> None:
         self.requested_close = bool(message.data)
@@ -543,24 +481,18 @@ class SceneRosBridge:
         self.requested_close = False
         self.previous_requested_close = False
         self.release_object()
-        position = np.array(
-            [
+        position = np.array([
                 self.random_generator.uniform(self.spawn_min[0], self.spawn_max[0]),
                 self.random_generator.uniform(self.spawn_min[1], self.spawn_max[1]),
                 self.spawn_min[2],
-            ],
-            dtype=np.float32,
-        )
+            ], dtype=np.float32)
         rnd_orientation = os.environ.get('RND_ORIENTATION', 'false')
         yaw = 0.0
         if (rnd_orientation=='true'):
             yaw = self.random_generator.uniform(-math.pi, math.pi)
         self.pick_object.set_world_pose(
             position=position,
-            orientation=np.array(
-                [math.cos(yaw / 2.0), 0.0, 0.0, math.sin(yaw / 2.0)],
-                dtype=np.float32,
-            ),
+            orientation=np.array([math.cos(yaw / 2.0), 0.0, 0.0, math.sin(yaw / 2.0)], dtype=np.float32),
         )
         self.pick_object.set_linear_velocity(np.zeros(3, dtype=np.float32))
         self.pick_object.set_angular_velocity(np.zeros(3, dtype=np.float32))
@@ -584,48 +516,28 @@ class SceneRosBridge:
                 flush=True,
             )
             return
-
         inverse_tcp = quaternion_conjugate(tcp_orientation)
-        self.relative_position = rotate_vector(
-            inverse_tcp, np.asarray(object_position) - tcp_position
-        )
-        self.relative_orientation = quaternion_multiply(
-            inverse_tcp, np.asarray(object_orientation)
-        )
+        self.relative_position = rotate_vector(inverse_tcp, np.asarray(object_position) - tcp_position)
+        self.relative_orientation = quaternion_multiply(inverse_tcp, np.asarray(object_orientation))
         stage = omni.usd.get_context().get_stage()
         joint_path = Sdf.Path('/World/PickObjectGraspJoint')
         if stage.GetPrimAtPath(joint_path).IsValid():
             stage.RemovePrim(joint_path)
         self.grasp_joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
-        self.grasp_joint.CreateBody0Rel().SetTargets(
-            [self.wrist_prim.GetPath()]
-        )
-        self.grasp_joint.CreateBody1Rel().SetTargets(
-            [Sdf.Path(OBJECT_PRIM_PATH)]
-        )
+        self.grasp_joint.CreateBody0Rel().SetTargets([self.wrist_prim.GetPath()])
+        self.grasp_joint.CreateBody1Rel().SetTargets([Sdf.Path(OBJECT_PRIM_PATH)])
         wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
         inverse_wrist = quaternion_conjugate(wrist_orientation)
-        local_position = rotate_vector(
-            inverse_wrist, np.asarray(object_position) - wrist_position
-        )
-        local_orientation = quaternion_multiply(
-            inverse_wrist, np.asarray(object_orientation)
-        )
+        local_position = rotate_vector(inverse_wrist, np.asarray(object_position) - wrist_position)
+        local_orientation = quaternion_multiply(inverse_wrist, np.asarray(object_orientation))
         self.grasp_joint.CreateLocalPos0Attr().Set(Gf.Vec3f(*local_position))
-        self.grasp_joint.CreateLocalRot0Attr().Set(
-            Gf.Quatf(
-                float(local_orientation[0]),
-                Gf.Vec3f(*local_orientation[1:]),
-            )
-        )
+        self.grasp_joint.CreateLocalRot0Attr().Set(Gf.Quatf(float(local_orientation[0]),Gf.Vec3f(*local_orientation[1:])))
         self.object_attached = True
         print('Robotiq grasp attached the object', flush=True)
 
     def tcp_world_pose(self) -> tuple[np.ndarray, np.ndarray]:
         wrist_position, wrist_orientation = prim_world_pose(self.wrist_prim)
-        tcp_position = wrist_position + rotate_vector(
-            wrist_orientation, self.tcp_offset_from_wrist
-        )
+        tcp_position = wrist_position + rotate_vector(wrist_orientation, self.tcp_offset_from_wrist)
         return tcp_position, wrist_orientation
 
     def update(self, _: float) -> None:
@@ -687,36 +599,25 @@ try:
     assets_root = get_assets_root_path()
     if not assets_root:
         raise RuntimeError('Isaac Sim asset root could not be resolved.')
-    robot_usd_path = (
-        assets_root + '/Isaac/Robots/UniversalRobots/ur10e/ur10e.usd'
-    )
+    robot_usd_path = (assets_root + '/Isaac/Robots/UniversalRobots/ur10e/ur10e.usd')
 
     world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 60.0)
     world.scene.add_default_ground_plane()
-    viewports.set_camera_view(
-        eye=np.array([2.4, 2.2, 1.8]),
-        target=np.array([0.55, 0.05, 0.35]),
-    )
+    viewports.set_camera_view(eye=np.array([2.4, 2.2, 1.8]), target=np.array([0.55, 0.05, 0.35]))
 
     add_reference_to_stage(robot_usd_path, ROBOT_PRIM_PATH)
     stage = omni.usd.get_context().get_stage()
     robot_prim = stage.GetPrimAtPath(ROBOT_PRIM_PATH)
     variants = robot_prim.GetVariantSets()
     if not variants.HasVariantSet(ROBOT_VARIANT_SET):
-        raise RuntimeError(
-            f'UR10e asset has no {ROBOT_VARIANT_SET!r} variant set.'
-        )
+        raise RuntimeError(f'UR10e asset has no {ROBOT_VARIANT_SET!r} variant set.')
     gripper_variant = variants.GetVariantSet(ROBOT_VARIANT_SET)
     if ROBOT_VARIANT not in gripper_variant.GetVariantNames():
-        raise RuntimeError(
-            f'UR10e asset has no {ROBOT_VARIANT!r} gripper variant.'
-        )
+        raise RuntimeError(f'UR10e asset has no {ROBOT_VARIANT!r} gripper variant.')
     gripper_variant.SetVariantSelection(ROBOT_VARIANT)
     simulation_app.update()
 
-    robot = world.scene.add(
-        SingleArticulation(prim_path=ROBOT_PRIM_PATH, name='ur10e_robotiq')
-    )
+    robot = world.scene.add(SingleArticulation(prim_path=ROBOT_PRIM_PATH, name='ur10e_robotiq'))
     pick_object = world.scene.add(
         DynamicCuboid(
             prim_path=OBJECT_PRIM_PATH,
@@ -728,7 +629,6 @@ try:
             mass=object_mass,
         )
     )
-
     bin_colors = [
         np.array([0.10, 0.35, 0.90]),
         np.array([0.15, 0.70, 0.25]),
@@ -774,9 +674,7 @@ try:
     world.reset()
     print('UR10e/Robotiq DOF names:', robot.dof_names, flush=True)
     missing_arm = [name for name in ARM_JOINT_NAMES if name not in robot.dof_names]
-    missing_gripper = [
-        name for name in GRIPPER_JOINT_NAMES if name not in robot.dof_names
-    ]
+    missing_gripper = [name for name in GRIPPER_JOINT_NAMES if name not in robot.dof_names]
     if missing_arm or missing_gripper:
         raise RuntimeError(
             f'Missing arm joints {missing_arm} or gripper joints {missing_gripper}; '
@@ -796,26 +694,16 @@ try:
     robot.set_joint_positions(initial_positions)
     robot.apply_action(ArticulationAction(joint_positions=initial_positions))
 
-    scene_bridge = SceneRosBridge(
-        world, robot, pick_object, wrist_prim, parameters
-    )
+    scene_bridge = SceneRosBridge(world, robot, pick_object, wrist_prim, parameters)
     world.add_physics_callback('pick_place_scene_bridge', scene_bridge.update)
-    print(
-        'UR10e with Robotiq 2F-140 initialized with ROS 2 arm and scene bridge',
-        flush=True,
-    )
+    print('UR10e with Robotiq 2F-140 initialized with ROS 2 arm and scene bridge', flush=True)
     print('Publishing: /isaac_joint_states, /clock, and object/grasp state', flush=True)
     print('Subscribing: /isaac_joint_commands and pick/place scene commands', flush=True)
 
     while simulation_app.is_running():
         # render=True also evaluates the OmniGraph in headless Isaac Sim 5.1.
         world.step(render=True)
-        og.Controller.set(
-            og.Controller.attribute(
-                '/ActionGraph/OnImpulseEvent.state:enableImpulse'
-            ),
-            True,
-        )
+        og.Controller.set(og.Controller.attribute('/ActionGraph/OnImpulseEvent.state:enableImpulse'), True)
 
 except KeyboardInterrupt:
     pass
