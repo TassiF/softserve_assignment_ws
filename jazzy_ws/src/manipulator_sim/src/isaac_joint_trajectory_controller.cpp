@@ -1,3 +1,15 @@
+// Developer: Francesco Tassi
+// Email: francesco.tassi@iit.it
+//
+// Joint trajectory controller for a robotic manipulator in IsaacSim. The controller receives joint trajectory goals from MoveIt and publishes joint commands to the simulator. 
+// It subscribes to the joint states published by the simulator to monitor execution progress and provide feedback to MoveIt.
+// 
+// Topics:
+//  - /isaac_joint_commands (sensor_msgs/JointState): publishes the joint commands to the simulator
+//  - /joint_states (sensor_msgs/JointState): publishes the joint states to MoveIt
+// Subscriptions:
+//  - /isaac_joint_states (sensor_msgs/JointState): subscribes to the joint states published by the simulator
+
 #include <algorithm>
 #include <array>
 #include <atomic>

@@ -183,19 +183,20 @@ def generate_launch_description():
             default_value='',
             description='Paths to remove from the Isaac Sim process environment.',
         ),
+        DeclareLaunchArgument(
+            'randomize_orientation',
+            default_value='false',
+            description='Randomize the orientation of the spawned objects.',
+        ),
     ]
 
     environment = [
         SetEnvironmentVariable(name='UR_ROBOT_TYPE', value=ur_type),
-        SetEnvironmentVariable(
-            name='UR_INITIAL_JOINTS',
-            value=LaunchConfiguration('initial_joint_positions'),
-        ),
-        SetEnvironmentVariable(
-            name='UR_HEADLESS', value=LaunchConfiguration('headless')
-        ),
+        SetEnvironmentVariable(name='UR_INITIAL_JOINTS', value=LaunchConfiguration('initial_joint_positions')),
+        SetEnvironmentVariable(name='UR_HEADLESS', value=LaunchConfiguration('headless')),
         SetEnvironmentVariable(name='UR_SCENE_CONFIG', value=pick_place_config),
         SetEnvironmentVariable(name='UR_RANDOM_SEED', value=random_seed),
+        SetEnvironmentVariable(name='RND_ORIENTATION', value=LaunchConfiguration('randomize_orientation')),
     ]
 
     isaac_sim = Node(

@@ -63,6 +63,7 @@ public:
     end_effector_link_ = parameter<std::string>("end_effector_link", "gripper_tcp");
     gripper_mount_link_ = parameter<std::string>("gripper_mount_link", "wrist_3_link");
     planner_id_ = parameter<std::string>("planner_id", "");
+    prefer_current_state_ = parameter<bool>("prefer_current_state", false);
     planning_time_s_ = parameter<double>("planning_time", 8.0);
     planning_attempts_ = static_cast<int>(parameter<int64_t>("planning_attempts", 8));
     planning_retries_ = static_cast<int>(parameter<int64_t>("planning_retries", 4));
@@ -93,8 +94,7 @@ public:
       });
 
 
-    //Definition of homing pose
-    homing_pose_ = {0.4, -0.3, 0.05};
+    homing_joint_positions_ = parameter<std::vector<double>>("homing_joint_positions", {-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0});
     grasp_orientation_ = quaternion_parameter("grasp_orientation_xyzw", {0.70710678, 0.70710678, 0.0, 0.0});
     object_to_tcp_offset_ = vector3_parameter("object_to_tcp_offset", {0.0, 0.0, 0.0});
     object_id_ = parameter<std::string>("object_id", "pick_object");
@@ -113,6 +113,10 @@ public:
     gripper_finger_positions_ = parameter<std::vector<double>>("gripper_finger_positions", {-0.055, 0.0, 0.185, 0.055, 0.0, 0.185});
     if (gripper_finger_positions_.size() != 6 || !all_finite(gripper_finger_positions_)) {
       throw std::invalid_argument("gripper_finger_positions must contain two finite xyz positions");
+    }
+    if (homing_joint_positions_.size() != joint_names_.size() ||
+      !all_finite(homing_joint_positions_)) {
+      throw std::invalid_argument("homing_joint_positions must match joint_names with finite values");
     }
 
     joint_state_topic_ = parameter<std::string>("joint_state_topic", "/joint_states");
@@ -157,8 +161,7 @@ public:
       });
   }
 
-  void run()
-  {
+  void run() {
     publish_status("Waiting for MoveIt, Isaac feedback, and the physical scene");
     moveit::planning_interface::MoveGroupInterface move_group(node_, planning_group_);
     configure_move_group(move_group);
@@ -186,17 +189,37 @@ public:
           cycle_completed = true;
           ++completed_cycles;
           RCLCPP_INFO(node_->get_logger(), ANSI_COLOR_INFO "Completed physical pick/place cycle %d" ANSI_COLOR_RESET, completed_cycles);
+
+          // Reset object
+          reset_object();
+          // Open gripper
+          publish_status("Starting cycle " + std::to_string(completed_cycles + 1));
+          if (!command_gripper(false)) {
+            return;
+          }
+          // Not homing here, as the cycle was successful, to avoid longer cycle time
+
           break;
         }
 
-        RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Cycle %d attempt %d failed: recovering gripper, MoveIt attachment, and scene" ANSI_COLOR_RESET, completed_cycles + 1, attempt);
-        recover_from_failure(move_group);
         if (attempt < cycle_retries_ && rclcpp::ok()) {
-          RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Replan strategy: respawn a fresh object, reset grasp state, and retry the full cycle (%d attempt(s) left)" ANSI_COLOR_RESET, cycle_retries_ - attempt);
-          publish_status("Retrying failed cycle with a fresh object and full replan");
+          RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Cycle %d attempt %d failed: moving to homing position and retrying the same cycle from there..." ANSI_COLOR_RESET, completed_cycles + 1, attempt);
           interruptible_sleep(retry_delay_s_);
+          recover_from_failure(move_group);
         } else {
           RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Cycle %d aborted after %d failed attempt(s)" ANSI_COLOR_RESET, completed_cycles + 1, attempt);
+          RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Replan strategy: robot homing, respawn a fresh object, reset grasp state, and retry the full cycle (%d attempt(s) left)" ANSI_COLOR_RESET, cycle_retries_ - attempt);
+          publish_status("Retrying failed cycle with a fresh object and full replan");
+          // Reset object
+          reset_object();
+          // Homing
+          recover_from_failure(move_group);
+          // Open gripper
+          publish_status("Starting cycle " + std::to_string(completed_cycles + 1));
+          if (!command_gripper(false)) {
+            return;
+          }
+
         }
       }
       if (!cycle_completed && rclcpp::ok()) {
@@ -210,8 +233,7 @@ public:
 private:
   using Vector3 = std::array<double, 3>;
 
-  struct Bin
-  {
+  struct Bin {
     Vector3 center;
   };
 
@@ -226,14 +248,12 @@ private:
     return value;
   }
 
-  static bool all_finite(const std::vector<double> & values)
-  {
+  static bool all_finite(const std::vector<double> & values) {
     return std::all_of(
       values.begin(), values.end(), [](double value) {return std::isfinite(value);});
   }
 
-  Vector3 vector3_parameter(const std::string & name, const std::vector<double> & default_value)
-  {
+  Vector3 vector3_parameter(const std::string & name, const std::vector<double> & default_value) {
     const auto values = parameter<std::vector<double>>(name, default_value);
     if (values.size() != 3 || !all_finite(values)) {
       throw std::invalid_argument(name + " must contain three finite values");
@@ -241,9 +261,7 @@ private:
     return {values[0], values[1], values[2]};
   }
 
-  Vector3 positive_vector3_parameter(
-    const std::string & name, const std::vector<double> & default_value)
-  {
+  Vector3 positive_vector3_parameter(const std::string & name, const std::vector<double> & default_value) {
     const auto values = vector3_parameter(name, default_value);
     if (std::any_of(values.begin(), values.end(), [](double value) {return value <= 0.0;})) {
       throw std::invalid_argument(name + " must contain positive values");
@@ -251,9 +269,7 @@ private:
     return values;
   }
 
-  geometry_msgs::msg::Quaternion quaternion_parameter(
-    const std::string & name, const std::vector<double> & default_value)
-  {
+  geometry_msgs::msg::Quaternion quaternion_parameter(const std::string & name, const std::vector<double> & default_value) {
     const auto values = parameter<std::vector<double>>(name, default_value);
     if (values.size() != 4 || !all_finite(values)) {
       throw std::invalid_argument(name + " must contain four finite xyzw values");
@@ -272,8 +288,7 @@ private:
     return quaternion;
   }
 
-  std::vector<Bin> bin_centers_parameter()
-  {
+  std::vector<Bin> bin_centers_parameter() {
     const auto values = parameter<std::vector<double>>(
       "bin_centers", {0.36, 0.48, 0.0, 0.64, 0.48, 0.0, 0.92, 0.48, 0.0});
     if (values.size() != 9 || !all_finite(values)) {
@@ -286,8 +301,7 @@ private:
     return bins;
   }
 
-  void validate_parameters() const
-  {
+  void validate_parameters() const {
     if (planning_time_s_ <= 0.0 || planning_attempts_ <= 0 || planning_retries_ <= 0 ||
       cycle_retries_ <= 0) {
       throw std::invalid_argument(
@@ -319,9 +333,7 @@ private:
     }
   }
 
-  void configure_move_group(
-    moveit::planning_interface::MoveGroupInterface & move_group) const
-  {
+  void configure_move_group(moveit::planning_interface::MoveGroupInterface & move_group) const {
     move_group.setEndEffectorLink(end_effector_link_);
     move_group.setPlanningPipelineId("ompl");
     if (!planner_id_.empty()) {
@@ -336,8 +348,7 @@ private:
     move_group.allowReplanning(false);
   }
 
-  void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr & message)
-  {
+  void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr & message) {
     if (message->name.size() != message->position.size()) {
       return;
     }
@@ -356,22 +367,16 @@ private:
 
     const auto received_at = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(state_mutex_);
-    if (valid_joint_state_samples_ > 0 &&
-      std::chrono::duration<double>(received_at - last_joint_state_time_).count() >
-      joint_state_timeout_s_)
-    {
+    if (valid_joint_state_samples_ > 0 && std::chrono::duration<double>(received_at - last_joint_state_time_).count() > joint_state_timeout_s_) {
       valid_joint_state_samples_ = 0;
     }
     ++valid_joint_state_samples_;
     last_joint_state_time_ = received_at;
   }
 
-  void object_pose_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr & message)
-  {
+  void object_pose_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr & message) {
     const auto & position = message->pose.position;
-    if (message->header.frame_id.empty() || !std::isfinite(position.x) ||
-      !std::isfinite(position.y) || !std::isfinite(position.z))
-    {
+    if (message->header.frame_id.empty() || !std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)){
       return;
     }
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -380,11 +385,9 @@ private:
     object_pose_received_at_ = std::chrono::steady_clock::now();
   }
 
-  void object_generation_callback(const std_msgs::msg::UInt32::ConstSharedPtr & message)
-  {
+  void object_generation_callback(const std_msgs::msg::UInt32::ConstSharedPtr & message) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    const bool generation_changed =
-      !have_object_generation_ || message->data != object_generation_;
+    const bool generation_changed = !have_object_generation_ || message->data != object_generation_;
     object_generation_ = message->data;
     have_object_generation_ = message->data > 0;
     if (generation_changed) {
@@ -392,36 +395,29 @@ private:
     }
   }
 
-  void grasp_state_callback(const std_msgs::msg::Bool::ConstSharedPtr & message)
-  {
+  void grasp_state_callback(const std_msgs::msg::Bool::ConstSharedPtr & message) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     grasp_attached_ = message->data;
     have_grasp_state_ = true;
   }
 
-  bool has_fresh_joint_state_stream() const
-  {
+  bool has_fresh_joint_state_stream() const {
     std::lock_guard<std::mutex> lock(state_mutex_);
     if (valid_joint_state_samples_ < minimum_state_samples_) {
       return false;
     }
     return std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - last_joint_state_time_).count() <=
-           joint_state_timeout_s_;
+      std::chrono::steady_clock::now() - last_joint_state_time_).count() <= joint_state_timeout_s_;
   }
 
-  bool wait_for_initial_scene(double timeout_s) const
-  {
-    return wait_until(
-      [this]() {
+  bool wait_for_initial_scene(double timeout_s) const {
+    return wait_until([this]() {
         std::lock_guard<std::mutex> lock(state_mutex_);
         return have_object_pose_ && have_object_generation_ && have_grasp_state_;
       }, timeout_s);
   }
 
-  template<typename Predicate>
-  bool wait_until(Predicate predicate, double timeout_s) const
-  {
+  template<typename Predicate> bool wait_until(Predicate predicate, double timeout_s) const {
     const auto deadline = std::chrono::steady_clock::now() +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
       std::chrono::duration<double>(std::max(0.0, timeout_s)));
@@ -434,20 +430,34 @@ private:
     return predicate();
   }
 
-  geometry_msgs::msg::PoseStamped latest_object_pose() const
-  {
+  geometry_msgs::msg::PoseStamped latest_object_pose() const {
     std::lock_guard<std::mutex> lock(state_mutex_);
     return object_pose_;
   }
 
-  uint32_t current_object_generation() const
-  {
+  uint32_t current_object_generation() const {
     std::lock_guard<std::mutex> lock(state_mutex_);
     return object_generation_;
   }
 
-  bool request_object_for_cycle(geometry_msgs::msg::PoseStamped & pose)
-  {
+  void reset_object() {
+    geometry_msgs::msg::PoseStamped object_pose;
+    if (!request_object_for_cycle(object_pose)) {
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Could not request a new randomized object to MoveIt" ANSI_COLOR_RESET);
+      return;
+    }
+    if (!update_object_collision(object_pose)) {
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Could not add the randomized object to MoveIt" ANSI_COLOR_RESET);
+      return;
+    }
+    target_log("measured object", object_pose);
+    if (!remove_object_collision()) {
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Could not open the grasp collision allowance" ANSI_COLOR_RESET);
+      return;
+    }
+  }
+
+  bool request_object_for_cycle(geometry_msgs::msg::PoseStamped & pose) {
     if (last_used_object_generation_ == 0) {
       if (!wait_for_initial_scene(scene_timeout_s_)) {
         RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Timed out waiting for the initial Isaac object pose" ANSI_COLOR_RESET);
@@ -461,8 +471,7 @@ private:
       if (!wait_until(
           [this, previous_generation]() {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            return object_generation_ > previous_generation && have_object_pose_ &&
-                   object_pose_received_at_ >= object_generation_received_at_;
+            return object_generation_ > previous_generation && have_object_pose_ && object_pose_received_at_ >= object_generation_received_at_;
           }, scene_timeout_s_))
       {
         RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Isaac did not confirm a new object generation" ANSI_COLOR_RESET);
@@ -475,8 +484,7 @@ private:
     return true;
   }
 
-  static geometry_msgs::msg::Pose identity_pose(const Vector3 & position)
-  {
+  static geometry_msgs::msg::Pose identity_pose(const Vector3 & position) {
     geometry_msgs::msg::Pose pose;
     pose.position.x = position[0];
     pose.position.y = position[1];
@@ -485,20 +493,14 @@ private:
     return pose;
   }
 
-  static shape_msgs::msg::SolidPrimitive box_primitive(const Vector3 & size)
-  {
+  static shape_msgs::msg::SolidPrimitive box_primitive(const Vector3 & size) {
     shape_msgs::msg::SolidPrimitive primitive;
     primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
     primitive.dimensions = {size[0], size[1], size[2]};
     return primitive;
   }
 
-  static moveit_msgs::msg::CollisionObject box_object(
-    const std::string & id,
-    const std::string & frame,
-    const Vector3 & position,
-    const Vector3 & size)
-  {
+  static moveit_msgs::msg::CollisionObject box_object(const std::string & id, const std::string & frame, const Vector3 & position, const Vector3 & size) {
     moveit_msgs::msg::CollisionObject object;
     object.header.frame_id = frame;
     object.id = id;
@@ -508,18 +510,12 @@ private:
     return object;
   }
 
-  static void append_box(
-    moveit_msgs::msg::CollisionObject & object,
-    const Vector3 & position,
-    const Vector3 & size)
-  {
+  static void append_box(moveit_msgs::msg::CollisionObject & object, const Vector3 & position, const Vector3 & size) {
     object.primitives.push_back(box_primitive(size));
     object.primitive_poses.push_back(identity_pose(position));
   }
 
-  moveit_msgs::msg::CollisionObject bin_collision_object(
-    std::size_t index, const Bin & bin) const
-  {
+  moveit_msgs::msg::CollisionObject bin_collision_object(std::size_t index, const Bin & bin) const {
     const double x_size = bin_outer_size_[0];
     const double y_size = bin_outer_size_[1];
     const double height = bin_outer_size_[2];
@@ -532,39 +528,24 @@ private:
     object.header.frame_id = "world";
     object.id = "bin_" + std::to_string(index);
     object.operation = moveit_msgs::msg::CollisionObject::ADD;
-    append_box(
-      object, {x, y, z + bin_floor_thickness_ / 2.0},
-      {x_size, y_size, bin_floor_thickness_});
-    append_box(
-      object, {x - (x_size - wall) / 2.0, y, z + height / 2.0},
-      {wall, y_size, height});
-    append_box(
-      object, {x + (x_size - wall) / 2.0, y, z + height / 2.0},
-      {wall, y_size, height});
-    append_box(
-      object, {x, y - (y_size - wall) / 2.0, z + height / 2.0},
-      {x_size - 2.0 * wall, wall, height});
-    append_box(
-      object, {x, y + (y_size - wall) / 2.0, z + height / 2.0},
-      {x_size - 2.0 * wall, wall, height});
+    append_box(object, {x, y, z + bin_floor_thickness_ / 2.0}, {x_size, y_size, bin_floor_thickness_});
+    append_box(object, {x - (x_size - wall) / 2.0, y, z + height / 2.0}, {wall, y_size, height});
+    append_box(object, {x + (x_size - wall) / 2.0, y, z + height / 2.0}, {wall, y_size, height});
+    append_box(object, {x, y - (y_size - wall) / 2.0, z + height / 2.0}, {x_size - 2.0 * wall, wall, height});
+    append_box(object, {x, y + (y_size - wall) / 2.0, z + height / 2.0}, {x_size - 2.0 * wall, wall, height});
     return object;
   }
 
-  void initialize_fixed_planning_scene()
-  {
+  void initialize_fixed_planning_scene() {
     std::vector<moveit_msgs::msg::CollisionObject> objects;
-    objects.push_back(
-      box_object(
-        "ground", "world", {0.0, 0.0, -ground_size_[2] / 2.0}, ground_size_));
-    objects.push_back(
-      box_object("static_obstacle", "world", obstacle_position_, obstacle_size_));
+    objects.push_back(box_object("ground", "world", {0.0, 0.0, -ground_size_[2] / 2.0}, ground_size_));
+    objects.push_back(box_object("static_obstacle", "world", obstacle_position_, obstacle_size_));
     for (std::size_t index = 0; index < bin_centers_.size(); ++index) {
       objects.push_back(bin_collision_object(index, bin_centers_[index]));
     }
     if (!planning_scene_interface_.applyCollisionObjects(objects)) {
       throw std::runtime_error("MoveIt rejected the fixed collision scene");
     }
-
     moveit_msgs::msg::AttachedCollisionObject gripper;
     gripper.link_name = gripper_mount_link_;
     gripper.touch_links = touch_links_;
@@ -572,24 +553,15 @@ private:
     gripper.object.id = "robotiq_2f_140_collision_proxy";
     gripper.object.operation = moveit_msgs::msg::CollisionObject::ADD;
     append_box(gripper.object, gripper_body_position_, gripper_body_size_);
-    append_box(
-      gripper.object,
-      {gripper_finger_positions_[0], gripper_finger_positions_[1],
-        gripper_finger_positions_[2]},
-      gripper_finger_size_);
-    append_box(
-      gripper.object,
-      {gripper_finger_positions_[3], gripper_finger_positions_[4],
-        gripper_finger_positions_[5]},
-      gripper_finger_size_);
+    append_box(gripper.object, {gripper_finger_positions_[0], gripper_finger_positions_[1], gripper_finger_positions_[2]}, gripper_finger_size_);
+    append_box(gripper.object, {gripper_finger_positions_[3], gripper_finger_positions_[4], gripper_finger_positions_[5]}, gripper_finger_size_);
     if (!planning_scene_interface_.applyAttachedCollisionObject(gripper)) {
       throw std::runtime_error("MoveIt rejected the Robotiq collision proxy");
     }
     publish_status("MoveIt scene contains the ground, three bins, Robotiq, and obstacle");
   }
 
-  bool update_object_collision(const geometry_msgs::msg::PoseStamped & pose)
-  {
+  bool update_object_collision(const geometry_msgs::msg::PoseStamped & pose) {
     moveit_msgs::msg::CollisionObject object;
     object.header = pose.header;
     object.id = object_id_;
@@ -599,8 +571,7 @@ private:
     return planning_scene_interface_.applyCollisionObject(object);
   }
 
-  bool remove_object_collision()
-  {
+  bool remove_object_collision() {
     moveit_msgs::msg::CollisionObject object;
     object.header.frame_id = "world";
     object.id = object_id_;
@@ -614,9 +585,7 @@ private:
       }, scene_timeout_s_);
   }
 
-  static Vector3 rotate_vector(
-    const geometry_msgs::msg::Quaternion & quaternion, const Vector3 & vector)
-  {
+  static Vector3 rotate_vector(const geometry_msgs::msg::Quaternion & quaternion, const Vector3 & vector) {
     const Vector3 q_vector{quaternion.x, quaternion.y, quaternion.z};
     const Vector3 cross_one{
       q_vector[1] * vector[2] - q_vector[2] * vector[1],
@@ -632,23 +601,38 @@ private:
       vector[2] + 2.0 * (quaternion.w * cross_one[2] + cross_two[2])};
   }
 
+  static geometry_msgs::msg::Quaternion multiply_quaternions(const geometry_msgs::msg::Quaternion & left, const geometry_msgs::msg::Quaternion & right) {
+    geometry_msgs::msg::Quaternion result;
+    result.w = left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z;
+    result.x = left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y;
+    result.y = left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x;
+    result.z = left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w;
+    return result;
+  }
+
+  static double yaw_from_quaternion(const geometry_msgs::msg::Quaternion & quaternion) {
+    return std::atan2( 2.0 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
+                       1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z));
+  }
+
   geometry_msgs::msg::PoseStamped tcp_pose_for_object(const geometry_msgs::msg::PoseStamped & object_pose) const {
     geometry_msgs::msg::PoseStamped wrist_pose;
     wrist_pose.header = object_pose.header;
     wrist_pose.header.stamp = node_->now();
-    wrist_pose.pose.orientation = grasp_orientation_;
-    const auto offset = rotate_vector(grasp_orientation_, object_to_tcp_offset_);
+    geometry_msgs::msg::Quaternion object_yaw;
+    const double yaw = yaw_from_quaternion(object_pose.pose.orientation);
+    object_yaw.z = std::sin(yaw / 2.0);
+    object_yaw.w = std::cos(yaw / 2.0);
+    wrist_pose.pose.orientation = multiply_quaternions(object_yaw, grasp_orientation_);
+    const auto offset = rotate_vector(wrist_pose.pose.orientation, object_to_tcp_offset_);
     wrist_pose.pose.position.x = object_pose.pose.position.x + offset[0];
     wrist_pose.pose.position.y = object_pose.pose.position.y + offset[1];
     wrist_pose.pose.position.z = object_pose.pose.position.z + offset[2];
     return wrist_pose;
   }
 
-  bool plan_and_execute(
-    moveit::planning_interface::MoveGroupInterface & move_group,
-    const geometry_msgs::msg::PoseStamped & target,
-    const std::string & phase)
-  {
+  bool plan_and_execute(moveit::planning_interface::MoveGroupInterface & move_group, const geometry_msgs::msg::PoseStamped & target, const std::string & phase) {
+    
     target_log(phase, target);
     goal_publisher_->publish(target);
     publish_status("Planning " + phase);
@@ -657,21 +641,23 @@ private:
     bool planned = false;
     for (int attempt = 1; attempt <= planning_retries_ && rclcpp::ok(); ++attempt) {
       move_group.setStartStateToCurrentState();
-      move_group.setPoseTarget(target, end_effector_link_);
+      const bool target_set = prefer_current_state_ ? move_group.setJointValueTarget(target, end_effector_link_) : move_group.setPoseTarget(target, end_effector_link_);
+      if (!target_set) {
+        RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Could not compute IK for phase '%s' from the current state" ANSI_COLOR_RESET, phase.c_str());
+        move_group.clearPoseTargets();
+        continue;
+      }
       const auto planning_result = move_group.plan(plan);
       move_group.clearPoseTargets();
       if (planning_result == moveit::core::MoveItErrorCode::SUCCESS) {
         planned = true;
         break;
       }
-      RCLCPP_WARN(
-        node_->get_logger(), ANSI_COLOR_WARN "Planning attempt %d/%d failed for phase '%s'" ANSI_COLOR_RESET,
-        attempt, planning_retries_, phase.c_str());
+      RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Planning attempt %d/%d failed for phase '%s'" ANSI_COLOR_RESET, attempt, planning_retries_, phase.c_str());
     }
     if (!planned) {
       return false;
     }
-
     publish_status("Executing " + phase);
     const auto execution_result = move_group.execute(plan);
     if (execution_result != moveit::core::MoveItErrorCode::SUCCESS) {
@@ -681,11 +667,7 @@ private:
     return true;
   }
 
-  bool cartesian_execute(
-    moveit::planning_interface::MoveGroupInterface & move_group,
-    const geometry_msgs::msg::PoseStamped & target,
-    const std::string & phase)
-  {
+  bool cartesian_execute(moveit::planning_interface::MoveGroupInterface & move_group, const geometry_msgs::msg::PoseStamped & target, const std::string & phase) {
     target_log(phase, target);
     goal_publisher_->publish(target);
     publish_status("Computing Cartesian " + phase);
@@ -696,10 +678,7 @@ private:
     moveit_msgs::msg::MoveItErrorCodes error_code;
     const double fraction = move_group.computeCartesianPath({target.pose}, cartesian_step_m_, trajectory_message, true, &error_code);
     if (fraction < 0.999) {
-      RCLCPP_WARN(
-        node_->get_logger(),
-        ANSI_COLOR_WARN "Cartesian phase '%s' reached %.1f%% (MoveIt code %d)" ANSI_COLOR_RESET,
-        phase.c_str(), 100.0 * std::max(0.0, fraction), error_code.val);
+      RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Cartesian phase '%s' reached %.1f%% (MoveIt code %d)" ANSI_COLOR_RESET, phase.c_str(), 100.0 * std::max(0.0, fraction), error_code.val);
       return false;
     }
 
@@ -711,12 +690,8 @@ private:
     robot_trajectory::RobotTrajectory timed_trajectory(move_group.getRobotModel(), planning_group_);
     timed_trajectory.setRobotTrajectoryMsg(*current_state, trajectory_message);
     trajectory_processing::TimeOptimalTrajectoryGeneration time_parameterization;
-    if (!time_parameterization.computeTimeStamps(
-        timed_trajectory, velocity_scaling_, acceleration_scaling_))
-    {
-      RCLCPP_ERROR(
-        node_->get_logger(), ANSI_COLOR_ERROR "Could not time-parameterize Cartesian phase '%s'" ANSI_COLOR_RESET,
-        phase.c_str());
+    if (!time_parameterization.computeTimeStamps(timed_trajectory, velocity_scaling_, acceleration_scaling_)) {
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Could not time-parameterize Cartesian phase '%s'" ANSI_COLOR_RESET, phase.c_str());
       return false;
     }
     timed_trajectory.getRobotTrajectoryMsg(trajectory_message);
@@ -724,16 +699,13 @@ private:
     publish_status("Executing Cartesian " + phase);
     const auto execution_result = move_group.execute(trajectory_message);
     if (execution_result != moveit::core::MoveItErrorCode::SUCCESS) {
-      RCLCPP_ERROR(
-        node_->get_logger(), ANSI_COLOR_ERROR "Execution failed for Cartesian phase '%s'" ANSI_COLOR_RESET,
-        phase.c_str());
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Execution failed for Cartesian phase '%s'" ANSI_COLOR_RESET, phase.c_str());
       return false;
     }
     return true;
   }
 
-  bool command_gripper(bool close)
-  {
+  bool command_gripper(bool close) {
     std_msgs::msg::Bool message;
     message.data = close;
     gripper_publisher_->publish(message);
@@ -743,17 +715,13 @@ private:
           return have_grasp_state_ && grasp_attached_ == close;
         }, scene_timeout_s_))
     {
-      RCLCPP_ERROR(
-        node_->get_logger(), ANSI_COLOR_ERROR "Isaac did not confirm gripper state '%s'" ANSI_COLOR_RESET,
-        close ? "attached" : "released");
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Isaac did not confirm gripper state '%s'" ANSI_COLOR_RESET, close ? "attached" : "released");
       return false;
     }
     return true;
   }
 
-  bool attach_object_in_moveit(
-    moveit::planning_interface::MoveGroupInterface & move_group)
-  {
+  bool attach_object_in_moveit(moveit::planning_interface::MoveGroupInterface & move_group){
     if (!move_group.attachObject(object_id_, gripper_mount_link_, touch_links_)) {
       RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "MoveIt rejected object attachment" ANSI_COLOR_RESET);
       return false;
@@ -790,45 +758,24 @@ private:
     return update_object_collision(latest_object_pose());
   }
 
-  bool object_is_in_bin(const Bin & bin) const
-  {
+  bool object_is_in_bin(const Bin & bin) const {
     const auto pose = latest_object_pose();
-    const double inner_x_half =
-      (bin_outer_size_[0] - 2.0 * bin_wall_thickness_ - object_size_[0]) / 2.0;
-    const double inner_y_half =
-      (bin_outer_size_[1] - 2.0 * bin_wall_thickness_ - object_size_[1]) / 2.0;
+    const double inner_x_half = (bin_outer_size_[0] - 2.0 * bin_wall_thickness_ - object_size_[0]) / 2.0;
+    const double inner_y_half = (bin_outer_size_[1] - 2.0 * bin_wall_thickness_ - object_size_[1]) / 2.0;
     return std::abs(pose.pose.position.x - bin.center[0]) <= inner_x_half &&
            std::abs(pose.pose.position.y - bin.center[1]) <= inner_y_half &&
            pose.pose.position.z >= bin.center[2] &&
            pose.pose.position.z <= bin.center[2] + bin_outer_size_[2] + object_size_[2];
   }
 
-  bool execute_cycle(
-    moveit::planning_interface::MoveGroupInterface & move_group, int cycle_number)
-  {
-    publish_status("Starting cycle " + std::to_string(cycle_number));
-    if (!command_gripper(false)) {
-      return false;
-    }
+  bool execute_cycle(moveit::planning_interface::MoveGroupInterface & move_group, int cycle_number) {
 
-    geometry_msgs::msg::PoseStamped object_pose;
-    if (!request_object_for_cycle(object_pose)) {
-      return false;
-    }
-    if (!update_object_collision(object_pose)) {
-      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Could not add the randomized object to MoveIt" ANSI_COLOR_RESET);
-      return false;
-    }
-    target_log("measured object", object_pose);
-
+    geometry_msgs::msg::PoseStamped object_pose = latest_object_pose();
+    last_used_object_generation_ = current_object_generation();
     auto pick_contact = tcp_pose_for_object(object_pose);
     auto pick_approach = pick_contact;
     pick_approach.pose.position.z += approach_height_m_;
     if (!plan_and_execute(move_group, pick_approach, "pick approach")) {
-      return false;
-    }
-    if (!remove_object_collision()) {
-      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "Could not open the grasp collision allowance" ANSI_COLOR_RESET);
       return false;
     }
     if (!cartesian_execute(move_group, pick_contact, "pick contact")) {
@@ -895,10 +842,7 @@ private:
       return false;
     }
 
-    if (!wait_until(
-        [this, &selected_bin]() {return object_is_in_bin(selected_bin);},
-        placement_timeout_s_))
-    {
+    if (!wait_until([this, &selected_bin]() {return object_is_in_bin(selected_bin);}, placement_timeout_s_)){
       RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "The measured object pose did not settle inside bin %zu" ANSI_COLOR_RESET, bin_index);
       return false;
     }
@@ -909,20 +853,30 @@ private:
     return true;
   }
 
-  void recover_from_failure(moveit::planning_interface::MoveGroupInterface & move_group) {
-    geometry_msgs::msg::PoseStamped emergency_homing_pose;
-    emergency_homing_pose.header.frame_id = move_group.getPlanningFrame();
-    emergency_homing_pose.header.stamp = node_->now();
-    emergency_homing_pose.pose.position.x = homing_pose_[0];
-    emergency_homing_pose.pose.position.y = homing_pose_[1];
-    emergency_homing_pose.pose.position.z = homing_pose_[2];
-    emergency_homing_pose.pose.orientation = grasp_orientation_;
-    RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Recovering from failure: moving to homing position [%.3f, %.3f, %.3f]" ANSI_COLOR_RESET,
-                emergency_homing_pose.pose.position.x, emergency_homing_pose.pose.position.y, emergency_homing_pose.pose.position.z);
-    if (!plan_and_execute(move_group, emergency_homing_pose, "emergency homing")) {
-      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "FATAL: Could not execute emergency homing. Opening gripper and resetting object." ANSI_COLOR_RESET);
+  bool plan_and_execute_homing(moveit::planning_interface::MoveGroupInterface & move_group){
+    move_group.setStartStateToCurrentState();
+    move_group.clearPoseTargets();
+    if (!move_group.setJointValueTarget(joint_names_, homing_joint_positions_)) {
+      RCLCPP_ERROR( node_->get_logger(), ANSI_COLOR_ERROR "Could not set the joint-space emergency homing target" ANSI_COLOR_RESET);
+      return false;
     }
+    publish_status("Planning emergency homing in joint space");
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    const auto planning_result = move_group.plan(plan);
+    move_group.clearPoseTargets();
+    if (planning_result != moveit::core::MoveItErrorCode::SUCCESS) {
+      return false;
+    }
+    publish_status("Executing emergency homing in joint space");
+    return move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS;
+  }
 
+  void recover_from_failure(moveit::planning_interface::MoveGroupInterface & move_group) {
+    RCLCPP_WARN(node_->get_logger(), ANSI_COLOR_WARN "Recovering from failure: moving to configured joint-space home" ANSI_COLOR_RESET);
+    if (!plan_and_execute_homing(move_group)) {
+      RCLCPP_ERROR(node_->get_logger(), ANSI_COLOR_ERROR "FATAL: Could not execute emergency homing. Robot is either in self-collision or joint-limit configuration." ANSI_COLOR_RESET);
+      throw std::runtime_error("Robot in unrecoverable state. Emergency homing failed.");
+    }
     std_msgs::msg::Bool open_message;
     open_message.data = false;
     gripper_publisher_->publish(open_message);
@@ -936,26 +890,21 @@ private:
     }
   }
 
-  void publish_status(const std::string & status)
-  {
+  void publish_status(const std::string & status) {
     std_msgs::msg::String message;
     message.data = status;
     status_publisher_->publish(message);
     RCLCPP_INFO(node_->get_logger(), "%s", status.c_str());
   }
 
-  void target_log(
-    const std::string & phase,
-    const geometry_msgs::msg::PoseStamped & target) const
-  {
+  void target_log(const std::string & phase, const geometry_msgs::msg::PoseStamped & target) const {
     RCLCPP_INFO(
       node_->get_logger(), "%s in %s: [%.3f, %.3f, %.3f]",
       phase.c_str(), target.header.frame_id.c_str(),
       target.pose.position.x, target.pose.position.y, target.pose.position.z);
   }
 
-  void interruptible_sleep(double duration_s) const
-  {
+  void interruptible_sleep(double duration_s) const {
     const auto deadline = std::chrono::steady_clock::now() +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
       std::chrono::duration<double>(std::max(0.0, duration_s)));
@@ -969,6 +918,7 @@ private:
   std::string end_effector_link_;
   std::string gripper_mount_link_;
   std::string planner_id_;
+  bool prefer_current_state_{false};
   double planning_time_s_{8.0};
   int planning_attempts_{8};
   int planning_retries_{4};
@@ -1006,7 +956,7 @@ private:
   Vector3 gripper_finger_size_{};
   std::vector<double> gripper_finger_positions_;
   std::vector<std::string> touch_links_;
-  Vector3 homing_pose_{};
+  std::vector<double> homing_joint_positions_;
 
   std::string object_pose_topic_;
   std::string object_generation_topic_;

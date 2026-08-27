@@ -139,10 +139,7 @@ def load_scene_parameters() -> dict[str, Any]:
 
 
 def read_initial_joint_positions() -> np.ndarray:
-    raw_value = os.environ.get(
-        'UR_INITIAL_JOINTS',
-        '-1.5708,-1.5708,1.5708,-1.5708,-1.5708,0.0',
-    )
+    raw_value = os.environ.get('UR_INITIAL_JOINTS', '-1.5708,-1.5708,1.5708,-1.5708,-1.5708,0.0')
     try:
         values = np.asarray(
             [float(component.strip()) for component in raw_value.split(',')],
@@ -159,9 +156,7 @@ def read_initial_joint_positions() -> np.ndarray:
     return values
 
 
-def find_unique_descendant(
-    stage: Usd.Stage, root_path: str, predicate: Any, description: str
-) -> str:
+def find_unique_descendant(stage: Usd.Stage, root_path: str, predicate: Any, description: str) -> str:
     matching_paths = [
         str(prim.GetPath())
         for prim in stage.Traverse()
@@ -556,10 +551,16 @@ class SceneRosBridge:
             ],
             dtype=np.float32,
         )
+        rnd_orientation = os.environ.get('RND_ORIENTATION', 'false')
+        yaw = 0.0
+        if (rnd_orientation=='true'):
+            yaw = self.random_generator.uniform(-math.pi, math.pi)
         self.pick_object.set_world_pose(
             position=position,
-            orientation=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            # orientation=np.array([self.random_generator.uniform(0, 1), 0.0, 0.0, 0.0], dtype=np.float32),
+            orientation=np.array(
+                [math.cos(yaw / 2.0), 0.0, 0.0, math.sin(yaw / 2.0)],
+                dtype=np.float32,
+            ),
         )
         self.pick_object.set_linear_velocity(np.zeros(3, dtype=np.float32))
         self.pick_object.set_angular_velocity(np.zeros(3, dtype=np.float32))
@@ -568,7 +569,8 @@ class SceneRosBridge:
         self.publish_state()
         prGreen(
             f'Spawned object generation {self.object_generation} at '
-            f'{position.tolist()}',
+            f'{position.tolist()} with yaw {yaw:.3f} rad'
+            f' with rnd_orientation={rnd_orientation}',
         )
 
     def try_attach_object(self) -> None:

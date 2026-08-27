@@ -25,6 +25,7 @@ random_pick_place_planner:
     gripper_mount_link: wrist_3_link
     # Empty selects OMPL's configured/default planner (RRTConnect here).
     planner_id: ''
+    prefer_current_state: false
     planning_time: 8.0
     planning_attempts: 8
     planning_retries: 4
@@ -51,6 +52,8 @@ random_pick_place_planner:
       - wrist_1_joint
       - wrist_2_joint
       - wrist_3_joint
+    # homing_joint_positions: [-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0]
+    homing_joint_positions: [-1.570801, -1.253951, 2.095921, -2.412767, -1.570796, -0.000004]
 
     # The fixed grasp orientation is [x, y, z, w]. It points the 2F-140 down.
     grasp_orientation_xyzw: [0.70710678, 0.70710678, 0.0, 0.0]
