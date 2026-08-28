@@ -48,7 +48,7 @@ This is a UR10e robot with 6DoF, however, if a redundant robot is to be used, it
 Hence, for stronger preference, I would add a joint-space nullspace target and enforce a minimum distance task:
 
 ```math
-d \left( q_{target},q_{measured} \right) = \sqrt{ \sum_{i} w_i \left(q_{i,target} - q_{i,measured} \right))^2 }
+d \left( q_{target},q_{measured} \right)
 ```​
  
 In particular, with redundant robots with more than one degree of redundancy (DoF>task-space degrees of freedom (which is typically 6 or less)), it becomes highly important to constraint these nullspaces in order to obtain a solution that converges towards the global optimum. To do this, an optimal control scheme is needed, and even better a hierarchical optimal control scheme.
