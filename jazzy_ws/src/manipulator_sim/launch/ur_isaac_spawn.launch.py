@@ -148,7 +148,7 @@ def generate_launch_description():
                 [
                     FindPackageShare('manipulator_sim'),
                     'scripts',
-                    'spawn_ur30.py',
+                    'spawn_ur.py',
                 ]
             ),
             description='Isaac Python scene that spawns and bridges the UR robot.',

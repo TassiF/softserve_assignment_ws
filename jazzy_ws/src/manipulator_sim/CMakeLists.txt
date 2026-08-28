@@ -65,7 +65,7 @@ install(
 )
 install(
   PROGRAMS
-    scripts/spawn_ur30.py
+    scripts/spawn_ur.py
   DESTINATION
     share/${PROJECT_NAME}/scripts
 )
