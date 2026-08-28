@@ -1,4 +1,4 @@
-# UR10e/Robotiq physical pick-and-place
+# Pick-and-place planning and control
 
 This package runs a collision-aware motion planner and controller using MoveIt and the Isaac Sim simulation environment with ROS2 bridges:
 
@@ -36,7 +36,7 @@ MoveIt keeps the target as a Cartesian pose and lets the planner choose a valid 
 
 Instead, if `prefer_current_state_ = true`, it calls:
 ```bash
-`setJointValueTarget(...)`
+setJointValueTarget(...)
 ```
 MoveIt computes IK using the current state and creates a joint-space target.
 This uses the current robot state as the IK seed and solves the target pose from that state, generating the goal joint configuration.
@@ -47,7 +47,7 @@ This prioritizes a nearby configuration during IK selection, but it is not a str
 This is a UR10e robot with 6DoF, however, if a redundant robot is to be used, it is essential to enforce a nullspace task to ensure that the best IK nullspace solution is chosen (among infinite solutions).
 Hence, for stronger preference, I would add a joint-space nullspace target and enforce a minimum distance task:
 ```math
-$$ d(q_{target},q_{measured}) = \sqrt{ \sum_{i} w_i (q_{i,target} - q_{i,measured})^2 } $$
+d(q_{target},q_{measured}) = \sqrt{ \sum_{i} w_i (q_{i,target} - q_{i,measured})^2 }
 ```​
  
 In particular, with redundant robots with more than one degree of redundancy (DoF>task-space degrees of freedom (which is typically 6 or less)), it becomes highly important to constraint these nullspaces in order to obtain a solution that converges towards the global optimum. To do this, an optimal control scheme is needed, and even better a hierarchical optimal control scheme.
