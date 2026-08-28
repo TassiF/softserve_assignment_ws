@@ -47,7 +47,7 @@ This prioritizes a nearby configuration during IK selection, but it is not a str
 This is a UR10e robot with 6DoF, however, if a redundant robot is to be used, it is essential to enforce a nullspace task to ensure that the best IK nullspace solution is chosen (among infinite solutions).
 Hence, for stronger preference, I would add a joint-space nullspace target and enforce a
 **minimum distance task:**\
-$$ d \left( q_{target},q_{measured} \right) $$
+$$ d \left( q_{target},q_{measured} \right) = \sqrt{ \sum_{i} w_i \left(q_{i,target} - q_{i,measured} \right))^2 } $$
  
 In particular, with redundant robots with more than one degree of redundancy (DoF>task-space degrees of freedom (which is typically 6 or less)), it becomes highly important to constraint these nullspaces in order to obtain a solution that converges towards the global optimum. To do this, an optimal control scheme is needed, and even better a hierarchical optimal control scheme.
 
@@ -58,11 +58,12 @@ I am specialized in these type of controllers, for which you can check some of m
   
 
 ### Observations and Conclusions
-moveit sucks
-
+MoveIt alone is not capable of providing optimal solutions to the planning problem. Indeed, often the trajectories generated are complex and quite articulated, and they sometimes make the robot end-up in self collision or singularity configurations.
+The solution to this problem is the one mentioned above in the future additions.
 
 
 ## Motion Controller
+The controller is in charge of exposing MoveIt `FollowJointTrajectory` action, interpolating the generated trajectories in sim time, and sending the joint position targets to Isaac.
 
 
 ## Build and run
