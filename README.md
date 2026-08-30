@@ -32,13 +32,21 @@ Using the NVIDIA docker framework, we build the containers. The first one ('base
 ```bash
 sudo python3 docker/container.py start ros2
 ```
-This will pull the images and build the containers, after which it is possible to enter via:
+which will pull the images and build the containers.
+To enter the ros2 container, run:
 ```bash
 sudo python3 docker/container.py enter ros2
 ```
 where the working directory is already in the jazzy workspace. 
 
-From here, you can build and run the packages using ROS2. Please follow the guide in the related package (manipulator_sim)[]
+From here, the packages can be built via ROS2. Please follow the guide in the related package (manipulator_sim)[https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim]
+
+###
+To stop the runninng container and empty the docker volumes, use:
+```bash
+sudo python3 docker/container.py stop ros2
+```
+Finally remove the relative docker images using `docker rmi <img_name>`.
 
 ## Hardware
 Tested using:
