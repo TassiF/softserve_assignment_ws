@@ -46,7 +46,7 @@ This prioritizes a nearby configuration during IK selection, but it is not a str
 #### Future additions
 This is a UR10e robot with 6DoF, however, if a redundant robot is to be used, it is essential to enforce a nullspace task to ensure that the best IK nullspace solution is chosen (among infinite solutions).
 Hence, for stronger preference, I would add a joint-space nullspace target and enforce a
-**minimum distance task:**\
+**minimum distance task:**
 ```math
 d(q_{target}, q_{measured})
 =
@@ -83,7 +83,7 @@ source install/setup.bash
 reset; ros2 launch manipulator_sim ur_isaac_spawn.launch.py randomize_orientation:=true
 ```
 
-For a single reproducible headless cycle:
+For a single reproducible cycle:
 
 ```bash
 reset; ros2 launch manipulator_sim ur_isaac_spawn.launch.py use_rviz:=true random_seed:=42 max_cycles:=1 randomize_orientation:=true

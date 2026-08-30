@@ -73,14 +73,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     echo "export XDG_RUNTIME_DIR=${ISAACLAB_PATH}/${ROS_DISTRO}_ws/log/xdg \n\
           export RUNLEVEL=3" >> ${HOME}/.bashrc
     
-# RUN colcon build && \
-#     source install/local_setup.bash
-
 RUN printf '%s\n' \
     'export PS1="\[\033[1;36m\][IsaacLab]\[\033[0m\] \[\033[1;32m\]\u@\h\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ "' \
     >> "${DOCKER_USER_HOME}/.bashrc"
 
-# RUN chmod +x ${ISAACLAB_PATH}/${ROS_DISTRO}_ws/src/manipulator_sim/scripts/spawn_ur30.py
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.sh \n\ 
           colcon build \n\ 
           source install/local_setup.bash" >> ${HOME}/.bashrc

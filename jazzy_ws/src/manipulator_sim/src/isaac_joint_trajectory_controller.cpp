@@ -158,7 +158,7 @@ private:
       have_state_ = true;
     }
 
-    // MoveIt and robot_state_publisher consume the conventional topic. The Isaac-specific topic remains the source.
+    // MoveIt and robot_state_publisher use the conventional topic. The Isaac-specific topic remains the source.
     auto forwarded = *message;
     if (forwarded.header.stamp.sec == 0 && forwarded.header.stamp.nanosec == 0) {
       forwarded.header.stamp = now();
@@ -384,10 +384,6 @@ private:
 
     RCLCPP_INFO(get_logger(), ANSI_COLOR_INFO "Executing %zu-point trajectory over %.3f seconds" ANSI_COLOR_RESET,goal->trajectory.points.size(), final_trajectory_time);
 
-    // MoveIt performs execution monitoring in ROS time and Isaac publishes
-    // /clock.  Measuring trajectory progress in wall time would make commands
-    // run too slowly or too quickly whenever Isaac is paused or runs faster
-    // than real time (which is common in headless mode).
     const auto start = now();
     const auto period = std::chrono::duration<double>(1.0 / control_rate_hz_);
     auto next_update = std::chrono::steady_clock::now();
