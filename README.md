@@ -17,15 +17,17 @@ The framework is entirely containerized. The host machine has basic requirements
 
 - Git
 - Docker and Docker Compose. For their installation refer to [Docker Installation](https://docs.docker.com/engine/install/ubuntu/)
- 
- Ensure your system meets the [System Requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html) for running NVIDIA Isaac Sim.
+- [Python 3.11](https://docs.python.org/3/whatsnew/3.11.html) or higher 
+- CUDA and NVIDIA [container toolkit](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container)
+
+Ensure your system meets the [System Requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html) for running NVIDIA Isaac Sim.
 
 ## How to
 
 ### Clone the repo
 Clone the workspace directory. It contains the whole Isaac Sim/lab environment and the ROS2 jazzy workspace:
 ```bash
-git clone 
+git clone https://github.com/TassiF/softserve_assignment_ws.git
 cd softserve_assignment_ws
 ```
 ### Build and run containers
@@ -50,9 +52,19 @@ sudo python3 docker/container.py stop ros2
 Finally remove the relative docker images using `docker rmi <img_name>`.
 
 ## Troubleshooting
-For any issue in building and running the docker containers through the NVIDIA framework, refer to [Container Installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container).
+-For any issue in building and running the docker containers through the NVIDIA framework, refer to [Container Installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container).
 
-## Hardware
+-If plugin errors appear when launching Isaac Sim, it can be related to the installed version. Try installing a different one by changing the `ISAACSIM_VERSION` parameter in the `docker/.env.base` file.
+
+-Sometimes, the gripper usd is not loaded properly. Re-launching the simulation should fix it.
+
+
+## Tested with
+### Software
+The complete framework was tested on:
+- Isaac Sim 6.0.1 with CUDA Version: 13.0
+- Isaac Sim 5.1.0 with CUDA Version: 13.2
+### Hardware
 Tested using:
 - CPU: 16 cores Intel(R) Core(TM) Ultra 7 255H
 - GPU: NVIDIA RTX PRO 500 Blackwell Generation Laptop GPU" (6 GiB, sm_120, mempool enabled)
@@ -68,10 +80,5 @@ For further documentation related to the Isaac environment, refer to NVIDIA offi
 
 ## IsaacSim/Lab licensing
 
-The Isaac Lab framework is released under [BSD-3 License](LICENSE). The `isaaclab_mimic` extension and its
-corresponding standalone scripts are released under [Apache 2.0](LICENSE-mimic). The license files of its
-dependencies and assets are present in the [`docs/licenses`](docs/licenses) directory.
-
-Note that Isaac Lab requires Isaac Sim, which includes components under proprietary licensing terms. Please see the [Isaac Sim license](docs/licenses/dependencies/isaacsim-license.txt) for information on Isaac Sim licensing.
-
-Note that the `isaaclab_mimic` extension requires cuRobo, which has proprietary licensing terms that can be found in [`docs/licenses/dependencies/cuRobo-license.txt`](docs/licenses/dependencies/cuRobo-license.txt).
+The Isaac Lab framework is released under [BSD-3 License](LICENSE).
+Note that Isaac Lab requires Isaac Sim, which includes components under proprietary licensing terms. See the [Isaac Sim license](docs/licenses/dependencies/isaacsim-license.txt) for information on Isaac Sim licensing.

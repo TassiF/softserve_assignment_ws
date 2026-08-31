@@ -87,7 +87,7 @@ Run inside the Isaac Lab ROS 2 container:
 ```bash
 source /opt/ros/jazzy/setup.bash
 colcon build
-source install/setup.bash
+source install/local_setup.bash
 
 reset; ros2 launch manipulator_sim ur_isaac_spawn.launch.py randomize_orientation:=true
 ```

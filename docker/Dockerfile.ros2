@@ -76,8 +76,3 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN printf '%s\n' \
     'export PS1="\[\033[1;36m\][IsaacLab]\[\033[0m\] \[\033[1;32m\]\u@\h\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ "' \
     >> "${DOCKER_USER_HOME}/.bashrc"
-
-RUN echo "source /opt/ros/${ROS_DISTRO}/setup.sh \n\ 
-          colcon build \n\ 
-          source install/local_setup.bash" >> ${HOME}/.bashrc
-          
