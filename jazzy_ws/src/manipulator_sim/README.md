@@ -43,20 +43,7 @@ This uses the current robot state as the IK seed and solves the target pose from
 The trajectory is generated from the current state to the generated joint configuration goal.
 This prioritizes a nearby configuration during IK selection, but it is not a strict joint-distance optimization. The selected IK solution is close-biased, however OMPL may still generate a non-shortest path to reach it.
 
-## Motion Controller
-The controller is in charge of exposing MoveIt `FollowJointTrajectory` action, interpolating the generated trajectories in sim time, and sending the joint position targets to Isaac.
-
-## Before running on real robot
-- Ensure the gripper is properly connected, add gripper IP, adjust topics names.
-From the manipulator UR interface:
-- Unlock motors and home to a mid-range joint configuration to avoid singularities and poor manipulability configurations.
-- Ensure the end-effector parameters are adjustes, its weight is compensated and the inertia properties are correct.
-- Ensure the correct control mode is used (position, velocity or torque-controlled).
-
-In addition, a vision system is necessary to identify object poses and obstacles.
-
-
-## Future additions
+#### Future additions
 This is a UR10e robot with 6DoF, however, if a redundant robot is to be used, it is essential to enforce a nullspace task to ensure that the best IK nullspace solution is chosen (among infinite solutions).
 Hence, for stronger preference, I would add a joint-space nullspace target and enforce a
 **minimum distance task:**
@@ -65,6 +52,7 @@ d(q_{target}, q_{measured})
 =
 \sqrt{\sum_i w_i \left(q_{i,target}-q_{i,measured}\right)^2}
 ```
+
  
 In particular, with redundant robots with more than one degree of redundancy (DoF>task-space degrees of freedom (which is typically 6 or less)), it becomes highly important to constraint these nullspaces in order to obtain a solution that converges towards the global optimum. To do this, an optimal control scheme is needed, and even better a hierarchical optimal control scheme.
 
@@ -74,10 +62,13 @@ I am specialized in these type of controllers, for which you can check some of m
 - [3] Tassi, F., "Hierarchical control for optimal human-robot collaboration", 2022. [hdl.handle.net/10589/207581](https://hdl.handle.net/10589/207581)
   
 
-## Observations and Conclusions
+### Observations and Conclusions
 MoveIt alone is not capable of providing optimal solutions to the planning problem. Indeed, often the trajectories generated are complex and quite articulated, and they sometimes make the robot end-up in self collision or singularity configurations.
 The solution to this problem is the one mentioned above in the future additions.
 
+
+## Motion Controller
+The controller is in charge of exposing MoveIt `FollowJointTrajectory` action, interpolating the generated trajectories in sim time, and sending the joint position targets to Isaac.
 
 
 ## Build and run

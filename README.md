@@ -1,4 +1,4 @@
-![Isaac Lab](docs/source/_static/pp.png)
+![Isaac Lab](docs/source/_static/isaaclab.jpg)
 
 ---
 
@@ -28,26 +28,17 @@ Clone the workspace directory. It contains the whole Isaac Sim/lab environment a
 git clone 
 cd softserve_assignment_ws
 ```
-### Build and run containers
 Using the NVIDIA docker framework, we build the containers. The first one ('base') will install Isaac Sim while the second one ('ros2') will provide the ROS2 bridges. I have adjusted the docker compose files in order to build them both by only running:
 ```bash
 sudo python3 docker/container.py start ros2
 ```
-which will pull the images and build the containers.
-To enter the ros2 container, run:
+This will pull the images and build the containers, after which it is possible to enter via:
 ```bash
 sudo python3 docker/container.py enter ros2
 ```
 where the working directory is already in the jazzy workspace. 
 
-From here, the packages can be built via ROS2. Please follow the guide in the related package [manipulator_sim](https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim)
-
-###
-To stop the runninng container and empty the docker volumes, use:
-```bash
-sudo python3 docker/container.py stop ros2
-```
-Finally remove the relative docker images using `docker rmi <img_name>`.
+From here, you can build and run the packages using ROS2. Please follow the guide in the related package (manipulator_sim)[]
 
 ## Hardware
 Tested using:
@@ -55,11 +46,15 @@ Tested using:
 - GPU: NVIDIA RTX PRO 500 Blackwell Generation Laptop GPU" (6 GiB, sm_120, mempool enabled)
 
 
-## Isaac Documentation
+### Documentation
 
-For further documentation related to the Isaac environment, refer to NVIDIA official website:
-- [Documentation page](https://isaac-sim.github.io/IsaacLab)
+Our [documentation page](https://isaac-sim.github.io/IsaacLab) provides everything you need to get started, including
+detailed tutorials and step-by-step guides. Follow these links to learn more about:
+
 - [Installation steps](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html#local-installation)
+- [Reinforcement learning](https://isaac-sim.github.io/IsaacLab/main/source/overview/reinforcement-learning/rl_existing_scripts.html)
+- [Tutorials](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/index.html)
+- [Available environments](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)
 
 
 ## IsaacSim/Lab licensing
