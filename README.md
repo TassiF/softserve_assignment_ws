@@ -40,7 +40,11 @@ sudo python3 docker/container.py enter ros2
 ```
 where the working directory is already in the jazzy workspace. 
 
+<<<<<<< HEAD
 From here, the packages can be built via ROS2. Please follow the guide in the related package [manipulator_sim](https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim)
+=======
+From here, the packages can be built via ROS2. Please follow the guide in the related package (manipulator_sim)[https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim]
+>>>>>>> 1861555da8ff5226a389a611d03cea1c9bad235a
 
 ###
 To stop the runninng container and empty the docker volumes, use:
