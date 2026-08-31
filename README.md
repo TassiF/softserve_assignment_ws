@@ -7,18 +7,18 @@
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-5.1.0-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 [![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://docs.python.org/3/whatsnew/3.11.html)
 [![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/22.04/)
-[![pre-commit](https://img.shields.io/github/actions/workflow/status/isaac-sim/IsaacLab/pre-commit.yaml?logo=pre-commit&logoColor=white&label=pre-commit&color=brightgreen)](https://github.com/isaac-sim/IsaacLab/actions/workflows/pre-commit.yaml)
 
 
-This framework is based on Isaac Sim/Lab integration with ROS2. A docker container has to be built by using the proprietary NVIDIA docker environment.
+This framework is using the Isaac Sim/Lab pipeline, with ROS2 and MoveIt. A docker container has to be built by using the NVIDIA docker environment.
 A detailed guide on how to do that is provided below.
 
 ## Pre-requisites
-The framework is entirely containerized. The host only has basic requirements such as:
+The framework is entirely containerized. The host machine has basic requirements such as:
 
 - Git
 - Docker and Docker Compose. For their installation refer to [Docker Installation](https://docs.docker.com/engine/install/ubuntu/)
-
+ 
+ Ensure your system meets the [System Requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html) for running NVIDIA Isaac Sim.
 
 ## How to
 
@@ -40,18 +40,17 @@ sudo python3 docker/container.py enter ros2
 ```
 where the working directory is already in the jazzy workspace. 
 
-<<<<<<< HEAD
-From here, the packages can be built via ROS2. Please follow the guide in the related package [manipulator_sim](https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim)
-=======
-From here, the packages can be built via ROS2. Please follow the guide in the related package (manipulator_sim)[https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim]
->>>>>>> 1861555da8ff5226a389a611d03cea1c9bad235a
+From here, the packages can be built via ROS2. Please follow the guide in the related package [manipulator_sim](https://github.com/TassiF/softserve_assignment_ws/tree/master/jazzy_ws/src/manipulator_sim).
 
-###
+### Stop containers
 To stop the runninng container and empty the docker volumes, use:
 ```bash
 sudo python3 docker/container.py stop ros2
 ```
 Finally remove the relative docker images using `docker rmi <img_name>`.
+
+## Troubleshooting
+For any issue in building and running the docker containers through the NVIDIA framework, refer to [Container Installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container).
 
 ## Hardware
 Tested using:
@@ -63,6 +62,7 @@ Tested using:
 
 For further documentation related to the Isaac environment, refer to NVIDIA official website:
 - [Documentation page](https://isaac-sim.github.io/IsaacLab)
+- [Container Installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container)
 - [Installation steps](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html#local-installation)
 
 
