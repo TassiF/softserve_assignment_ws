@@ -52,18 +52,18 @@ sudo python3 docker/container.py stop ros2
 Finally remove the relative docker images using `docker rmi <img_name>`.
 
 ## Troubleshooting
--For any issue in building and running the docker containers through the NVIDIA framework, refer to [Container Installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container).
+- For any issue in building and running the docker containers through the NVIDIA framework, refer to [Container Installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html#isaac-sim-app-install-container).
 
--If plugin errors appear when launching Isaac Sim, it can be related to the installed version. Try installing a different one by changing the `ISAACSIM_VERSION` parameter in the `docker/.env.base` file.
+- If plugin errors appear when launching Isaac Sim, it can be related to the installed version. Try installing a different one by changing the `ISAACSIM_VERSION` parameter in the `docker/.env.base` file.
 
--Sometimes, the gripper usd is not loaded properly. Re-launching the simulation should fix it.
+- Sometimes, the gripper usd is not loaded properly. Re-launching the simulation should fix it.
 
 
 ## Tested with
 ### Software
 The complete framework was tested on:
-- Isaac Sim 6.0.1 with CUDA Version: 13.0
-- Isaac Sim 5.1.0 with CUDA Version: 13.2
+- Isaac Sim 6.0.1 with CUDA Version: 13.2
+- Isaac Sim 5.1.0 with CUDA Version: 13.0
 ### Hardware
 Tested using:
 - CPU: 16 cores Intel(R) Core(TM) Ultra 7 255H

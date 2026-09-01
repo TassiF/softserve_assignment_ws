@@ -48,9 +48,10 @@ The controller is in charge of exposing MoveIt `FollowJointTrajectory` action, i
 
 ## Before running on real robot
 - Ensure the gripper is properly connected, add gripper IP, adjust topics names.
+
 From the manipulator UR interface:
 - Unlock motors and home to a mid-range joint configuration to avoid singularities and poor manipulability configurations.
-- Ensure the end-effector parameters are adjustes, its weight is compensated and the inertia properties are correct.
+- Ensure the end-effector parameters are adjusted, its weight is compensated and the inertia properties are correct.
 - Ensure the correct control mode is used (position, velocity or torque-controlled).
 
 In addition, a vision system is necessary to identify object poses and obstacles.
@@ -58,7 +59,7 @@ In addition, a vision system is necessary to identify object poses and obstacles
 
 ## Future additions
 This is a UR10e robot with 6DoF, however, if a redundant robot is to be used, it is essential to enforce a nullspace task to ensure that the best IK nullspace solution is chosen (among infinite solutions).
-Hence, for stronger preference, I would add a joint-space nullspace target and enforce a
+Hence, I would add a joint-space nullspace target and enforce a
 **minimum distance task:**
 ```math
 d(q_{target}, q_{measured})
@@ -66,7 +67,7 @@ d(q_{target}, q_{measured})
 \sqrt{\sum_i w_i \left(q_{i,target}-q_{i,measured}\right)^2}
 ```
  
-In particular, with redundant robots with more than one degree of redundancy (DoF>task-space degrees of freedom (which is typically 6 or less)), it becomes highly important to constraint these nullspaces in order to obtain a solution that converges towards the global optimum. To do this, an optimal control scheme is needed, and even better a hierarchical optimal control scheme.
+In particular, with redundant robots with more than one degree of redundancy (DoF>task-space degrees of freedom (which is typically 6 or less)), it becomes highly important to constraint the nullspace in order to obtain a solution that converges towards the global optimum. To do this, an optimal control scheme is needed, and a hierarchical optimal control scheme could be especially useful.
 
 I am specialized in these type of controllers, for which you can check some of my works:
 - [1] F. Tassi and A. Ajoudani, "Decoupled Multi-Robot Control for Coupled Bimanual Manipulation," 2026 IEEE/ASME International Conference on Advanced Intelligent Mechatronics (AIM), Genova, Italy, 2026, pp. 1-8, doi: [10.1109/AIM65483.2026.11658072](https://ieeexplore.ieee.org/document/11658072)
@@ -76,7 +77,7 @@ I am specialized in these type of controllers, for which you can check some of m
 
 ## Observations and Conclusions
 MoveIt alone is not capable of providing optimal solutions to the planning problem. Indeed, often the trajectories generated are complex and quite articulated, and they sometimes make the robot end-up in self collision or singularity configurations.
-The solution to this problem is the one mentioned above in the future additions.
+The solution to this problem is the one mentioned above, in the future additions.
 
 
 
@@ -101,7 +102,7 @@ reset; ros2 launch manipulator_sim ur_isaac_spawn.launch.py use_rviz:=true rando
 Please consider that, depending on your hardware, the proper startup of Isaac simulator might take a while.
 However, after the first run, the caching volumes defined in the docker-compose file enable a faster startup.
 
-The Robotiq assembly requires `ur_type:=ur10e`, which is the launch default. Isaac Sim 5.1 provides this gripper as the `Robotiq_2f_140` variant of its UR10e
+The Robotiq assembly requires `ur_type:=ur10e`, which is the launch default. Isaac Sim provides this gripper as the `Robotiq_2f_140` variant of its UR10e
 asset. The ROS URDF remains the official six-axis UR model; MoveIt represents the attached gripper with conservative collision primitives configured in `config/pick_place.yaml`.
 
 ## Configuration and interfaces
